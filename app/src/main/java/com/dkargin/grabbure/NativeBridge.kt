@@ -5,6 +5,10 @@ object NativeBridge {
         System.loadLibrary("grabbure")
     }
 
+    @JvmStatic external fun setVerbose(verbose: Boolean)
+
+    @JvmStatic external fun drainLog(): String
+
     @JvmStatic external fun discoveryStart(): String?
 
     @JvmStatic external fun discoveryStop()
@@ -23,6 +27,8 @@ object NativeBridge {
 
     @JvmStatic external fun currentTopic(): String
 
+    @JvmStatic external fun publishedTopics(): Array<String>
+
     @JvmStatic external fun publishJpeg(data: ByteArray): Boolean
 
     @JvmStatic external fun publishYuv(
@@ -38,4 +44,25 @@ object NativeBridge {
         uPix: Int,
         vPix: Int,
     ): Boolean
+
+    @JvmStatic external fun startImu(): String?
+
+    @JvmStatic external fun stopImu()
+
+    @JvmStatic external fun imuTopic(): String
+
+    /** Android device frame, rad/s. */
+    @JvmStatic external fun publishGyro(x: Double, y: Double, z: Double): Boolean
+
+    /** Android device frame, m/s^2, including gravity. */
+    @JvmStatic external fun publishAccel(x: Double, y: Double, z: Double): Boolean
+
+    @JvmStatic external fun startMagnetometer(): String?
+
+    @JvmStatic external fun stopMagnetometer()
+
+    @JvmStatic external fun magnetometerTopic(): String
+
+    /** Android device frame, microtesla. */
+    @JvmStatic external fun publishMagneticField(x: Double, y: Double, z: Double): Boolean
 }

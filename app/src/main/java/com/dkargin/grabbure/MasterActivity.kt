@@ -1,6 +1,8 @@
 package com.dkargin.grabbure
 
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.os.Handler
@@ -18,6 +20,8 @@ import com.dkargin.grabbure.databinding.ActivityMasterBinding
 class MasterActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMasterBinding
     private lateinit var adapter: MasterAdapter
+    private val store by lazy { MasterStore(this) }
+    private var heard = emptyList<DiscoveredMaster>()
     private var multicastLock: WifiManager.MulticastLock? = null
     private val handler = Handler(Looper.getMainLooper())
     private val poll = object : Runnable {
@@ -31,18 +35,42 @@ class MasterActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMasterBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        adapter = MasterAdapter { master -> openCamera(master) }
+        adapter = MasterAdapter(
+            onOpen = { master -> openSession(master.uri, master.label) },
+            onFavorite = { master ->
+                if (master.favorite) store.clearFavorite() else store.setFavorite(master.uri, master.label)
+                showMasters()
+            },
+            onRemove = { master ->
+                store.remove(master.uri)
+                showMasters()
+            },
+        )
         binding.masters.layoutManager = LinearLayoutManager(this)
         binding.masters.adapter = adapter
+        binding.addMaster.setOnClickListener { addManual() }
+        showMasters()
+        binding.showLog.setOnCheckedChangeListener { _, checked ->
+            binding.logScroll.visibility = if (checked) View.VISIBLE else View.GONE
+            try {
+                NativeBridge.setVerbose(checked)
+            } catch (_: UnsatisfiedLinkError) {
+            }
+            flushLog()
+        }
     }
+
+    private var lastMasters = "\u0000"
 
     override fun onStart() {
         super.onStart()
+        AppLog.line(bindWifi())
         val wifi = applicationContext.getSystemService(WifiManager::class.java)
         multicastLock = wifi?.createMulticastLock("grabbure")?.apply {
             setReferenceCounted(false)
             acquire()
         }
+        AppLog.line(if (multicastLock?.isHeld == true) "Multicast lock held" else "Multicast lock not held")
         val error = try {
             NativeBridge.discoveryStart()
         } catch (ex: UnsatisfiedLinkError) {
@@ -54,10 +82,14 @@ class MasterActivity : AppCompatActivity() {
         } else {
             getString(R.string.phone_address, address)
         }
+        AppLog.line(if (address == null) "No Wi-Fi IPv4 address" else "Phone address $address")
         if (error != null) {
             binding.status.text = error
+            AppLog.line(error)
+            flushLog()
             return
         }
+        AppLog.line("Discovery started")
         handler.post(poll)
     }
 
@@ -67,23 +99,120 @@ class MasterActivity : AppCompatActivity() {
             NativeBridge.discoveryStop()
         } catch (_: UnsatisfiedLinkError) {
         }
+        AppLog.line("Discovery stopped")
         multicastLock?.let { if (it.isHeld) it.release() }
         multicastLock = null
+        getSystemService(ConnectivityManager::class.java)?.bindProcessToNetwork(null)
         super.onStop()
     }
 
+    private fun bindWifi(): String {
+        val connectivity = getSystemService(ConnectivityManager::class.java)
+            ?: return "No connectivity service"
+        val wifi = connectivity.allNetworks.firstOrNull { network ->
+            val caps = connectivity.getNetworkCapabilities(network) ?: return@firstOrNull false
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+        }
+        if (wifi == null)
+            return "No Wi-Fi network to bind"
+        connectivity.bindProcessToNetwork(wifi)
+        return "Bound process to Wi-Fi"
+    }
+
     private fun refresh() {
-        val masters = NativeBridge.discoveryPoll().toList()
-        adapter.submit(masters)
-        binding.status.text = if (masters.isEmpty()) {
+        flushLog()
+        heard = NativeBridge.discoveryPoll().toList()
+        showMasters()
+        val summary = heard.joinToString { master ->
+            master.uri.ifBlank { master.label() }
+        }
+        if (summary != lastMasters) {
+            lastMasters = summary
+            AppLog.line(if (heard.isEmpty()) "No masters heard" else "Masters: $summary")
+            flushLog()
+        }
+        binding.status.text = if (heard.isEmpty()) {
             getString(R.string.listening)
         } else {
-            resources.getQuantityString(R.plurals.masters_found, masters.size, masters.size)
+            resources.getQuantityString(R.plurals.masters_found, heard.size, heard.size)
         }
     }
 
-    private fun openCamera(master: DiscoveredMaster) {
-        if (master.uri.isBlank()) {
+    private fun showMasters() {
+        val favorite = store.favoriteUri()
+        val saved = store.saved().associateBy { it.uri }
+        val merged = linkedMapOf<String, KnownMaster>()
+        for (item in saved.values) {
+            merged[item.uri] = KnownMaster(
+                uri = item.uri,
+                label = item.label.ifBlank { item.uri },
+                manual = item.manual,
+                favorite = item.uri == favorite,
+                saved = true,
+                hasToken = false,
+            )
+        }
+        for (item in heard) {
+            if (item.uri.isBlank()) {
+                merged["uuid:" + item.uuid] = KnownMaster(
+                    uri = "",
+                    label = item.label(),
+                    manual = false,
+                    favorite = false,
+                    saved = false,
+                    hasToken = item.hasToken,
+                )
+                continue
+            }
+            val kept = saved[item.uri]
+            merged[item.uri] = KnownMaster(
+                uri = item.uri,
+                label = item.label(),
+                manual = kept?.manual == true,
+                favorite = item.uri == favorite,
+                saved = kept != null,
+                hasToken = item.hasToken,
+            )
+        }
+        val ordered = merged.values.sortedWith(
+            compareByDescending<KnownMaster> { it.favorite }
+                .thenByDescending { it.manual }
+                .thenBy { it.label },
+        )
+        adapter.submit(ordered)
+    }
+
+    private fun flushLog() {
+        if (!binding.showLog.isChecked) return
+        try {
+            AppLog.appendNative(NativeBridge.drainLog())
+        } catch (_: UnsatisfiedLinkError) {
+        }
+        val text = AppLog.text()
+        if (binding.logView.text.toString() != text) {
+            binding.logView.text = text
+            binding.logScroll.post { binding.logScroll.fullScroll(View.FOCUS_DOWN) }
+        }
+    }
+
+    private fun addManual() {
+        val parsed = parseMaster(binding.manualMaster.text.toString())
+        if (parsed == null) {
+            Toast.makeText(this, R.string.bad_master_address, Toast.LENGTH_LONG).show()
+            AppLog.line("Rejected master address \"" + binding.manualMaster.text + "\"")
+            flushLog()
+            return
+        }
+        store.addManual(parsed.first, parsed.second)
+        binding.manualMaster.text.clear()
+        AppLog.line("Saved manual master " + parsed.second)
+        showMasters()
+        flushLog()
+    }
+
+    private fun openSession(uri: String, label: String) {
+        if (uri.isBlank()) {
             Toast.makeText(this, R.string.master_without_address, Toast.LENGTH_SHORT).show()
             return
         }
@@ -94,19 +223,52 @@ class MasterActivity : AppCompatActivity() {
         }
         startActivity(
             Intent(this, CameraActivity::class.java)
-                .putExtra(CameraActivity.EXTRA_URI, master.uri)
-                .putExtra(CameraActivity.EXTRA_LABEL, master.label())
+                .putExtra(CameraActivity.EXTRA_URI, uri)
+                .putExtra(CameraActivity.EXTRA_LABEL, label)
                 .putExtra(CameraActivity.EXTRA_IP, address),
         )
     }
 }
 
-private class MasterAdapter(
-    private val onClick: (DiscoveredMaster) -> Unit,
-) : RecyclerView.Adapter<MasterAdapter.Holder>() {
-    private val items = mutableListOf<DiscoveredMaster>()
+private fun parseMaster(raw: String): Pair<String, String>? {
+    val text = raw.trim()
+    if (text.isEmpty()) return null
+    if (text.startsWith("http://")) {
+        val uri = if (text.endsWith("/")) text else "$text/"
+        val label = text.removePrefix("http://").trimEnd('/')
+        return uri to label
+    }
+    val colon = text.lastIndexOf(':')
+    val host: String
+    val port: Int
+    if (colon > 0 && text.indexOf(':') == colon) {
+        host = text.substring(0, colon)
+        port = text.substring(colon + 1).toIntOrNull() ?: return null
+    } else {
+        host = text
+        port = 11311
+    }
+    if (host.isBlank() || port !in 1..65535) return null
+    return "http://$host:$port/" to "$host:$port"
+}
 
-    fun submit(next: List<DiscoveredMaster>) {
+private data class KnownMaster(
+    val uri: String,
+    val label: String,
+    val manual: Boolean,
+    val favorite: Boolean,
+    val saved: Boolean,
+    val hasToken: Boolean,
+)
+
+private class MasterAdapter(
+    private val onOpen: (KnownMaster) -> Unit,
+    private val onFavorite: (KnownMaster) -> Unit,
+    private val onRemove: (KnownMaster) -> Unit,
+) : RecyclerView.Adapter<MasterAdapter.Holder>() {
+    private val items = mutableListOf<KnownMaster>()
+
+    fun submit(next: List<KnownMaster>) {
         items.clear()
         items.addAll(next)
         notifyDataSetChanged()
@@ -119,10 +281,20 @@ private class MasterAdapter(
 
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val master = items[position]
-        holder.title.text = master.label()
-        val token = if (master.hasToken) holder.itemView.context.getString(R.string.with_token) else ""
-        holder.subtitle.text = master.uri + token
-        holder.itemView.setOnClickListener { onClick(master) }
+        val context = holder.itemView.context
+        holder.title.text = master.label
+        val tags = buildList {
+            if (master.manual) add(context.getString(R.string.tag_manual))
+            if (master.favorite) add(context.getString(R.string.tag_favorite))
+            if (master.hasToken) add(context.getString(R.string.with_token))
+        }
+        holder.subtitle.text = if (tags.isEmpty()) master.uri else master.uri + " · " + tags.joinToString(" · ")
+        holder.itemView.setOnClickListener { onOpen(master) }
+        holder.favorite.setText(if (master.favorite) R.string.unfavorite else R.string.favorite)
+        holder.favorite.visibility = if (master.uri.isBlank()) View.GONE else View.VISIBLE
+        holder.favorite.setOnClickListener { onFavorite(master) }
+        holder.remove.visibility = if (master.saved) View.VISIBLE else View.GONE
+        holder.remove.setOnClickListener { onRemove(master) }
     }
 
     override fun getItemCount(): Int = items.size
@@ -130,5 +302,7 @@ private class MasterAdapter(
     class Holder(view: View) : RecyclerView.ViewHolder(view) {
         val title: TextView = view.findViewById(R.id.title)
         val subtitle: TextView = view.findViewById(R.id.subtitle)
+        val favorite: android.widget.Button = view.findViewById(R.id.favorite)
+        val remove: android.widget.Button = view.findViewById(R.id.remove)
     }
 }
