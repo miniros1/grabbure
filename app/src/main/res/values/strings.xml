@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Grabbure</string>
+    <string name="listening">Listening for nearby masters…</string>
+    <string name="phone_address">This phone: %1$s</string>
+    <string name="no_wifi_address">No Wi-Fi IPv4 address. Connect to the same network as the master.</string>
+    <string name="master_without_address">This master has no address yet.</string>
+    <string name="with_token"> · token</string>
+    <string name="master_line">%1$s\n%2$s</string>
+    <string name="camera_label">Camera</string>
+    <string name="format_label">Format</string>
+    <string name="resolution_label">Resolution</string>
+    <string name="format_jpeg">JPEG</string>
+    <string name="format_yuv">YUV 420</string>
+    <string name="camera_front">Front</string>
+    <string name="camera_back">Back</string>
+    <string name="camera_external">External</string>
+    <string name="no_cameras">No camera reports JPEG or YUV output.</string>
+    <string name="camera_permission_denied">Camera permission is required to publish images.</string>
+    <string name="connecting">Connecting to the master…</string>
+    <string name="start">Start</string>
+    <string name="stop">Stop</string>
+    <string name="publishing">%1$s\n%2$d published, %3$d dropped</string>
+    <string name="camera_configure_failed">Camera session failed to configure.</string>
+    <string name="camera_error">Camera error %1$d</string>
+    <plurals name="masters_found">
+        <item quantity="one">%d master</item>
+        <item quantity="other">%d masters</item>
+    </plurals>
+</resources>
