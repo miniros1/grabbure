@@ -28,6 +28,27 @@
         android:inputType="text"
         android:singleLine="true" />
 
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingTop="8dp">
+
+        <TextView
+            android:id="@+id/bagFolder"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+        <Button
+            android:id="@+id/chooseBagFolder"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/bag_folder" />
+    </LinearLayout>
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/masters"
         android:layout_width="match_parent"

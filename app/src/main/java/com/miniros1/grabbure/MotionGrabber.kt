@@ -111,6 +111,9 @@ class MotionGrabber(
     val hasMagnetometer: Boolean
         get() = magnetometer != null
 
+    val hasTemperature: Boolean
+        get() = temperature != null
+
     /** Applies on the next sample interval. A running gyroscope and accelerometer are re-registered. */
     fun setImuRateHz(hz: Int) {
         if (hz <= 0) return

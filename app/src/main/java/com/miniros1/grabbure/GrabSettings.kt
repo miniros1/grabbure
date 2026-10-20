@@ -103,4 +103,6 @@ object Session {
     const val EXTRA_LABEL = "master_label"
     const val EXTRA_IP = "phone_ip"
     const val EXTRA_PHONE = "phone_name"
+    const val EXTRA_BAG = "bag"
+    const val EXTRA_BAG_DIR = "bag_dir"
 }

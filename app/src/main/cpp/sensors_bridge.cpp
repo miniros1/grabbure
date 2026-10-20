@@ -1,3 +1,4 @@
+#include "bag_writer.h"
 #include "gps_publisher.h"
 #include "imu_publisher.h"
 #include "jni_util.h"
@@ -62,26 +63,37 @@ Java_com_miniros1_grabbure_NativeBridge_stopImu(JNIEnv*, jclass) {
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_miniros1_grabbure_NativeBridge_imuTopic(JNIEnv* env, jclass) {
-  return grabbure::toJava(env, g_imu.topic());
+  const std::string bag = grabbure::bagWriter().imuTopic();
+  return grabbure::toJava(env, bag.empty() ? g_imu.topic() : bag);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_miniros1_grabbure_NativeBridge_temperatureTopic(JNIEnv* env, jclass) {
-  return grabbure::toJava(env, g_imu.temperatureTopic());
+  const std::string bag = grabbure::bagWriter().temperatureTopic();
+  return grabbure::toJava(env, bag.empty() ? g_imu.temperatureTopic() : bag);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_miniros1_grabbure_NativeBridge_publishTemperature(JNIEnv*, jclass, jdouble celsius) {
+  if (grabbure::bagWriter().isOpen()) {
+    return grabbure::bagWriter().writeTemperature(celsius) ? JNI_TRUE : JNI_FALSE;
+  }
   return g_imu.publishTemperature(celsius) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_miniros1_grabbure_NativeBridge_publishGyro(JNIEnv*, jclass, jdouble x, jdouble y, jdouble z) {
+  if (grabbure::bagWriter().isOpen()) {
+    return grabbure::bagWriter().pushGyroscope(x, y, z) ? JNI_TRUE : JNI_FALSE;
+  }
   return g_imu.pushGyroscope(x, y, z) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_miniros1_grabbure_NativeBridge_publishAccel(JNIEnv*, jclass, jdouble x, jdouble y, jdouble z) {
+  if (grabbure::bagWriter().isOpen()) {
+    return grabbure::bagWriter().pushAccelerometer(x, y, z) ? JNI_TRUE : JNI_FALSE;
+  }
   return g_imu.pushAccelerometer(x, y, z) ? JNI_TRUE : JNI_FALSE;
 }
 
@@ -107,12 +119,16 @@ Java_com_miniros1_grabbure_NativeBridge_stopMagnetometer(JNIEnv*, jclass) {
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_miniros1_grabbure_NativeBridge_magnetometerTopic(JNIEnv* env, jclass) {
-  return grabbure::toJava(env, g_mag.topic());
+  const std::string bag = grabbure::bagWriter().magnetometerTopic();
+  return grabbure::toJava(env, bag.empty() ? g_mag.topic() : bag);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_miniros1_grabbure_NativeBridge_publishMagneticField(JNIEnv*, jclass, jdouble x, jdouble y,
                                                             jdouble z) {
+  if (grabbure::bagWriter().isOpen()) {
+    return grabbure::bagWriter().writeMagneticField(x, y, z) ? JNI_TRUE : JNI_FALSE;
+  }
   return g_mag.publish(x, y, z) ? JNI_TRUE : JNI_FALSE;
 }
 
@@ -138,13 +154,20 @@ Java_com_miniros1_grabbure_NativeBridge_stopGps(JNIEnv*, jclass) {
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_miniros1_grabbure_NativeBridge_gpsTopic(JNIEnv* env, jclass) {
-  return grabbure::toJava(env, g_gps.topic());
+  const std::string bag = grabbure::bagWriter().gpsTopic();
+  return grabbure::toJava(env, bag.empty() ? g_gps.topic() : bag);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_miniros1_grabbure_NativeBridge_publishNavSat(JNIEnv*, jclass, jdouble latitude, jdouble longitude,
                                                      jdouble altitude, jboolean hasAltitude,
                                                      jdouble horizontalAccuracyM, jdouble verticalAccuracyM) {
+  if (grabbure::bagWriter().isOpen()) {
+    return grabbure::bagWriter().writeNavSat(latitude, longitude, altitude, hasAltitude == JNI_TRUE,
+                                             horizontalAccuracyM, verticalAccuracyM)
+               ? JNI_TRUE
+               : JNI_FALSE;
+  }
   return g_gps.publish(latitude, longitude, altitude, hasAltitude == JNI_TRUE, horizontalAccuracyM,
                        verticalAccuracyM)
              ? JNI_TRUE

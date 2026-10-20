@@ -1,6 +1,6 @@
 # Grabbure
 
-Android sensor publisher for miniros. The first screen lists nearby masters from UDP discovery and a phone name (default `android`). Choosing a master, or starting a master on this phone, opens the settings screen. That screen previews the camera and stores the camera, sample rate, and GPS choices. Start publishes them under the phone name, so several phones can share one master. Choosing a different master or phone name after the node has started restarts the app and connects to that choice.
+Android sensor publisher for miniros. The first screen lists nearby masters from UDP discovery and a phone name (default `android`). Choosing a master, or starting a master on this phone, opens the settings screen. That screen previews the camera and stores the camera, sample rate, and GPS choices. Start publishes them under the phone name, so several phones can share one master. Record to bag, also on the first screen, writes the same topics into a dated `.bag` file with no master and no node. Images in that file are JPEG. The storage folder is chosen on the first screen; the default is the app's external files directory. Choosing a different master or phone name after the node has started restarts the app and connects to that choice.
 
 Topics, with `N` the camera id:
 

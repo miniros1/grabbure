@@ -35,6 +35,8 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var masterLabel: String
     private lateinit var phoneIp: String
     private lateinit var phoneName: String
+    private var bagMode = false
+    private var bagDir = ""
 
     private val cameras = mutableListOf<CameraChoice>()
     private var formats = listOf<FormatChoice>()
@@ -69,7 +71,13 @@ class SettingsActivity : AppCompatActivity() {
         masterLabel = intent.getStringExtra(Session.EXTRA_LABEL).orEmpty()
         phoneIp = intent.getStringExtra(Session.EXTRA_IP).orEmpty()
         phoneName = PhoneName.sanitize(intent.getStringExtra(Session.EXTRA_PHONE).orEmpty())
-        binding.master.text = getString(R.string.master_line, masterLabel, masterUri)
+        bagMode = intent.getBooleanExtra(Session.EXTRA_BAG, false)
+        bagDir = intent.getStringExtra(Session.EXTRA_BAG_DIR).orEmpty()
+        binding.master.text = if (bagMode) {
+            getString(R.string.bag_folder_line, bagDir)
+        } else {
+            getString(R.string.master_line, masterLabel, masterUri)
+        }
         binding.preview.surfaceTextureListener = surfaceListener
         binding.start.setOnClickListener { startPublishing() }
         loadImuRate()
@@ -171,12 +179,17 @@ class SettingsActivity : AppCompatActivity() {
         val camera = cameras.getOrNull(binding.camera.selectedItemPosition) ?: return
         formats = buildList {
             if (camera.jpeg.isNotEmpty()) add(FormatChoice(getString(R.string.format_jpeg), true, camera.jpeg))
-            if (camera.yuv.isNotEmpty()) add(FormatChoice(getString(R.string.format_yuv), false, camera.yuv))
+            if (!bagMode && camera.yuv.isNotEmpty()) add(FormatChoice(getString(R.string.format_yuv), false, camera.yuv))
+        }
+        if (formats.isEmpty()) {
+            binding.status.setText(if (bagMode) R.string.bag_needs_jpeg else R.string.no_cameras)
+            return
         }
         val savedJpeg = GrabSettings.load(this).jpeg
         val index = formats.indexOfFirst { it.jpeg == savedJpeg }.let { if (it >= 0) it else 0 }
         binding.format.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, formats.map { it.label })
         selectWithoutCallback(binding.format, index)
+        binding.format.isEnabled = !bagMode && formats.size > 1
         binding.format.onItemSelectedListener = selected { refreshSizes() }
         loadCaptureControls()
         refreshSizes()
@@ -455,8 +468,12 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun startPublishing() {
-        if (phoneIp.isBlank()) {
+        if (!bagMode && phoneIp.isBlank()) {
             toast(getString(R.string.no_wifi_address))
+            return
+        }
+        if (bagMode && bagDir.isBlank()) {
+            toast(getString(R.string.bag_folder_unavailable))
             return
         }
         releasePreview()
@@ -465,7 +482,9 @@ class SettingsActivity : AppCompatActivity() {
                 .putExtra(Session.EXTRA_URI, masterUri)
                 .putExtra(Session.EXTRA_LABEL, masterLabel)
                 .putExtra(Session.EXTRA_IP, phoneIp)
-                .putExtra(Session.EXTRA_PHONE, phoneName),
+                .putExtra(Session.EXTRA_PHONE, phoneName)
+                .putExtra(Session.EXTRA_BAG, bagMode)
+                .putExtra(Session.EXTRA_BAG_DIR, bagDir),
         )
     }
 

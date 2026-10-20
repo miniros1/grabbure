@@ -12,6 +12,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -27,6 +28,23 @@ class MasterActivity : AppCompatActivity() {
     private val handler = Handler(Looper.getMainLooper())
     private var keepNetwork = false
     private var openedPending = false
+    private val pickBagFolder = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        try {
+            contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+        } catch (_: SecurityException) {
+        }
+        val folder = BagFolder.pathForTree(uri)
+        if (folder == null || !(folder.isDirectory || folder.mkdirs()) || !folder.canWrite()) {
+            Toast.makeText(this, R.string.bag_folder_unavailable, Toast.LENGTH_LONG).show()
+            return@registerForActivityResult
+        }
+        BagFolder.save(this, folder)
+        showBagFolder()
+    }
     private val poll = object : Runnable {
         override fun run() {
             refresh()
@@ -40,7 +58,7 @@ class MasterActivity : AppCompatActivity() {
         setContentView(binding.root)
         adapter = MasterAdapter(
             onOpen = { master ->
-                choose(master.local, master.uri, master.label)
+                if (master.bag) openBag() else choose(master.local, master.uri, master.label)
             },
             onFavorite = { master ->
                 if (master.favorite) store.clearFavorite() else store.setFavorite(master.uri, master.label)
@@ -55,6 +73,8 @@ class MasterActivity : AppCompatActivity() {
         binding.masters.adapter = adapter
         binding.addMaster.setOnClickListener { addManual() }
         binding.phoneName.setText(PhoneName.load(this))
+        showBagFolder()
+        binding.chooseBagFolder.setOnClickListener { pickBagFolder.launch(null) }
         showMasters()
         binding.showLog.setOnCheckedChangeListener { _, checked ->
             binding.logScroll.visibility = if (checked) View.VISIBLE else View.GONE
@@ -196,6 +216,15 @@ class MasterActivity : AppCompatActivity() {
                 .thenByDescending { it.manual }
                 .thenBy { it.label },
         )
+        val bag = KnownMaster(
+            uri = "",
+            label = getString(R.string.record_bag),
+            manual = false,
+            favorite = false,
+            saved = false,
+            hasToken = false,
+            bag = true,
+        )
         val local = KnownMaster(
             uri = "",
             label = getString(R.string.local_master),
@@ -205,7 +234,7 @@ class MasterActivity : AppCompatActivity() {
             hasToken = false,
             local = true,
         )
-        adapter.submit(listOf(local) + ordered)
+        adapter.submit(listOf(bag, local) + ordered)
     }
 
     private fun flushLog() {
@@ -326,6 +355,27 @@ class MasterActivity : AppCompatActivity() {
         }.start()
     }
 
+    private fun showBagFolder() {
+        binding.bagFolder.text = getString(R.string.bag_folder_line, BagFolder.directory(this).absolutePath)
+    }
+
+    private fun openBag() {
+        val phone = PhoneName.save(this, binding.phoneName.text.toString())
+        binding.phoneName.setText(phone)
+        val folder = BagFolder.directory(this)
+        if (!folder.isDirectory || !folder.canWrite()) {
+            Toast.makeText(this, R.string.bag_folder_unavailable, Toast.LENGTH_LONG).show()
+            return
+        }
+        startActivity(
+            Intent(this, SettingsActivity::class.java)
+                .putExtra(Session.EXTRA_BAG, true)
+                .putExtra(Session.EXTRA_BAG_DIR, folder.absolutePath)
+                .putExtra(Session.EXTRA_LABEL, getString(R.string.record_bag))
+                .putExtra(Session.EXTRA_PHONE, phone),
+        )
+    }
+
     private fun openSession(uri: String, label: String) {
         if (uri.isBlank()) {
             Toast.makeText(this, R.string.master_without_address, Toast.LENGTH_SHORT).show()
@@ -399,6 +449,7 @@ private data class KnownMaster(
     val saved: Boolean,
     val hasToken: Boolean,
     val local: Boolean = false,
+    val bag: Boolean = false,
 )
 
 private class MasterAdapter(
@@ -424,7 +475,7 @@ private class MasterAdapter(
         val context = holder.itemView.context
         holder.title.text = master.label
         holder.itemView.setOnClickListener { onOpen(master) }
-        holder.favorite.visibility = if (master.local || master.uri.isBlank()) View.GONE else View.VISIBLE
+        holder.favorite.visibility = if (master.local || master.bag || master.uri.isBlank()) View.GONE else View.VISIBLE
         holder.favorite.setIconResource(
             if (master.favorite) R.drawable.ic_favorite else R.drawable.ic_favorite_border,
         )

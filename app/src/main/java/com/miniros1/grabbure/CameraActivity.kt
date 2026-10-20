@@ -25,7 +25,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.miniros1.grabbure.databinding.ActivityCameraBinding
+import java.io.File
 import java.nio.ByteBuffer
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -39,6 +42,8 @@ class CameraActivity : AppCompatActivity() {
     private lateinit var masterLabel: String
     private lateinit var phoneIp: String
     private lateinit var phoneName: String
+    private var bagMode = false
+    private var bagDir = ""
 
     private var captureId: String? = null
     private var captureJpeg = true
@@ -95,7 +100,13 @@ class CameraActivity : AppCompatActivity() {
         masterLabel = intent.getStringExtra(Session.EXTRA_LABEL).orEmpty()
         phoneIp = intent.getStringExtra(Session.EXTRA_IP).orEmpty()
         phoneName = PhoneName.sanitize(intent.getStringExtra(Session.EXTRA_PHONE).orEmpty())
-        binding.master.text = getString(R.string.master_line, masterLabel, masterUri)
+        bagMode = intent.getBooleanExtra(Session.EXTRA_BAG, false)
+        bagDir = intent.getStringExtra(Session.EXTRA_BAG_DIR).orEmpty()
+        binding.master.text = if (bagMode) {
+            getString(R.string.bag_folder_line, bagDir)
+        } else {
+            getString(R.string.master_line, masterLabel, masterUri)
+        }
         binding.preview.surfaceTextureListener = surfaceListener
         motion = MotionGrabber(this)
         gps = GpsGrabber(this)
@@ -153,9 +164,13 @@ class CameraActivity : AppCompatActivity() {
         val saved = GrabSettings.load(this)
         val cameraId = if (includeCamera) saved.cameraId else null
         val size = if (includeCamera) saved.size else null
-        val jpeg = saved.jpeg
-        if (phoneIp.isBlank()) {
+        val jpeg = if (bagMode) true else saved.jpeg
+        if (!bagMode && phoneIp.isBlank()) {
             toast(getString(R.string.no_wifi_address))
+            return
+        }
+        if (bagMode && bagDir.isBlank()) {
+            toast(getString(R.string.bag_folder_unavailable))
             return
         }
         motion.setImuRateHz(saved.imuHz)
@@ -164,19 +179,38 @@ class CameraActivity : AppCompatActivity() {
         running = true
         startRates()
         binding.start.setText(R.string.stop)
-        binding.status.setText(R.string.connecting)
+        binding.status.setText(if (bagMode) R.string.recording else R.string.connecting)
         captureId = cameraId
         captureJpeg = jpeg
         captureSize = size
+        val recordBag = bagMode
+        val bagFile = if (recordBag) {
+            val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+            File(bagDir, "grabbure_$stamp.bag").absolutePath
+        } else {
+            ""
+        }
         Thread {
-            val nodeError = NativeBridge.nodeStart(masterUri, phoneIp, phoneName)
-            val pubError = if (nodeError == null && cameraId != null) {
+            val nodeError = if (recordBag) {
+                NativeBridge.startBag(
+                    bagFile,
+                    phoneName,
+                    cameraId.orEmpty(),
+                    motion.hasImu,
+                    motion.hasTemperature,
+                    motion.hasMagnetometer,
+                    publishGps,
+                )
+            } else {
+                NativeBridge.nodeStart(masterUri, phoneIp, phoneName)
+            }
+            val pubError = if (!recordBag && nodeError == null && cameraId != null) {
                 NativeBridge.startPublisher(cameraId, jpeg)
             } else {
                 null
             }
-            val motionError = if (nodeError == null && pubError == null) motion.advertise() else null
-            val gpsError = if (publishGps && nodeError == null && pubError == null && motionError == null) {
+            val motionError = if (!recordBag && nodeError == null && pubError == null) motion.advertise() else null
+            val gpsError = if (!recordBag && publishGps && nodeError == null && pubError == null && motionError == null) {
                 gps.advertise()
             } else {
                 null
@@ -190,6 +224,7 @@ class CameraActivity : AppCompatActivity() {
                     gps.stop()
                     try {
                         NativeBridge.stopPublisher()
+                        NativeBridge.stopBag()
                     } catch (_: UnsatisfiedLinkError) {
                     }
                     binding.start.setText(R.string.start)
@@ -203,6 +238,9 @@ class CameraActivity : AppCompatActivity() {
                 if (publishGps) gps.listen()
                 if (cameraId != null && size != null && binding.preview.isAvailable) {
                     openCamera(cameraId, jpeg, size)
+                }
+                if (recordBag) {
+                    binding.status.text = getString(R.string.recording) + "\n" + bagFile
                 }
             }
         }.start()
@@ -243,7 +281,7 @@ class CameraActivity : AppCompatActivity() {
                             return
                         }
                         runOnUiThread {
-                            binding.status.setText(R.string.publishing)
+                            if (!bagMode) binding.status.setText(R.string.publishing)
                         }
                     }
 
@@ -426,6 +464,7 @@ class CameraActivity : AppCompatActivity() {
         if (::gps.isInitialized) gps.stop()
         try {
             NativeBridge.stopPublisher()
+            NativeBridge.stopBag()
         } catch (_: UnsatisfiedLinkError) {
         }
         if (::binding.isInitialized) binding.start.setText(R.string.start)

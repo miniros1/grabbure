@@ -20,6 +20,12 @@
     <string name="starting_local_master">Starting a master on this phone…</string>
     <string name="restarting_connection">Restarting the app to connect to this master…</string>
     <string name="local_master">This phone</string>
+    <string name="record_bag">Record to bag</string>
+    <string name="bag_folder">Storage</string>
+    <string name="bag_folder_line">Bags: %1$s</string>
+    <string name="bag_folder_unavailable">That folder cannot be written as a normal path. Choose a folder on internal storage.</string>
+    <string name="bag_needs_jpeg">Bag recording needs a JPEG size. This camera does not list one.</string>
+    <string name="recording">Recording</string>
     <string name="no_wifi_address">No Wi-Fi IPv4 address. Connect to the same network as the master.</string>
     <string name="master_without_address">This master has no address yet.</string>
     <string name="with_token">token</string>

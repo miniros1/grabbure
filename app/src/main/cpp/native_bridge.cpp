@@ -1,3 +1,4 @@
+#include "bag_writer.h"
 #include "camera_publisher.h"
 #include "jni_util.h"
 #include "motion_topics.h"
@@ -250,15 +251,40 @@ Java_com_miniros1_grabbure_NativeBridge_stopPublisher(JNIEnv*, jclass) {
 }
 
 extern "C" JNIEXPORT jstring JNICALL
+Java_com_miniros1_grabbure_NativeBridge_startBag(JNIEnv* env, jclass, jstring path, jstring phone,
+                                                 jstring cameraId, jboolean imu, jboolean temperature,
+                                                 jboolean magnetometer, jboolean gps) {
+  const std::string error = grabbure::bagWriter().open(
+      grabbure::fromJava(env, path), grabbure::fromJava(env, phone), grabbure::fromJava(env, cameraId),
+      imu == JNI_TRUE, temperature == JNI_TRUE, magnetometer == JNI_TRUE, gps == JNI_TRUE);
+  if (error.empty()) {
+    return nullptr;
+  }
+  return grabbure::toJava(env, error);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_miniros1_grabbure_NativeBridge_stopBag(JNIEnv*, jclass) {
+  grabbure::bagWriter().close();
+}
+
+extern "C" JNIEXPORT jstring JNICALL
 Java_com_miniros1_grabbure_NativeBridge_currentTopic(JNIEnv* env, jclass) {
+  const std::string bagTopic = grabbure::bagWriter().cameraTopic();
+  if (!bagTopic.empty()) {
+    return grabbure::toJava(env, bagTopic);
+  }
   return grabbure::toJava(env, g_camera.topic());
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_com_miniros1_grabbure_NativeBridge_publishedTopics(JNIEnv* env, jclass) {
-  std::vector<std::string> topics = g_camera.topics();
-  const std::vector<std::string> motion = grabbure::motionTopics();
-  topics.insert(topics.end(), motion.begin(), motion.end());
+  std::vector<std::string> topics = grabbure::bagWriter().topics();
+  if (topics.empty()) {
+    topics = g_camera.topics();
+    const std::vector<std::string> motion = grabbure::motionTopics();
+    topics.insert(topics.end(), motion.begin(), motion.end());
+  }
   jclass stringClass = env->FindClass("java/lang/String");
   jobjectArray array = env->NewObjectArray(static_cast<jsize>(topics.size()), stringClass, nullptr);
   if (!array) {
@@ -284,6 +310,10 @@ Java_com_miniros1_grabbure_NativeBridge_publishJpeg(JNIEnv* env, jclass, jbyteAr
   msg.format = "jpeg";
   msg.data.assign(reinterpret_cast<uint8_t*>(bytes), reinterpret_cast<uint8_t*>(bytes) + size);
   env->ReleaseByteArrayElements(data, bytes, JNI_ABORT);
+  if (grabbure::bagWriter().isOpen()) {
+    return grabbure::bagWriter().writeJpeg(msg.data.data(), static_cast<int>(msg.data.size())) ? JNI_TRUE
+                                                                                                : JNI_FALSE;
+  }
   return g_camera.publishCompressed(msg) ? JNI_TRUE : JNI_FALSE;
 }
 

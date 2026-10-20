@@ -23,6 +23,7 @@ add_library(grabbure SHARED
   gps_publisher.cpp
   sensors_bridge.cpp
   discovery_bridge.cpp
-  log_forwarder.cpp)
+  log_forwarder.cpp
+  bag_writer.cpp)
 target_include_directories(grabbure PRIVATE ${MINIROS_GENERATED_INCLUDE_DIRS})
-target_link_libraries(grabbure PRIVATE miniros::roscxx log)
+target_link_libraries(grabbure PRIVATE miniros::roscxx miniros::bag_storage log)

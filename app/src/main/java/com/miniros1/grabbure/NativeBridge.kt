@@ -31,6 +31,22 @@ object NativeBridge {
 
     @JvmStatic external fun nodeName(): String
 
+    /**
+     * Open a rosbag and record into it. No master and no node.
+     * `cameraId` empty skips images. Images are JPEG only.
+     */
+    @JvmStatic external fun startBag(
+        path: String,
+        phone: String,
+        cameraId: String,
+        imu: Boolean,
+        temperature: Boolean,
+        magnetometer: Boolean,
+        gps: Boolean,
+    ): String?
+
+    @JvmStatic external fun stopBag()
+
     @JvmStatic external fun startPublisher(cameraId: String, jpeg: Boolean): String?
 
     @JvmStatic external fun stopPublisher()
