@@ -1,17 +1,34 @@
 # Grabbure
 
-Android sensor publisher for miniros. The first screen lists nearby masters from UDP discovery and a phone name (default `android`). Choosing a master, or starting a master on this phone, opens the settings screen. That screen previews the camera and stores the camera, sample rate, and GPS choices. Start publishes them under the phone name, so several phones can share one master. Record to bag, also on the first screen, writes the same topics into a dated `.bag` file with no master and no node. Images in that file are JPEG. The storage folder is chosen on the first screen; the default is the app's external files directory. Choosing a different master or phone name after the node has started restarts the app and connects to that choice.
+**Grabbure** grabs sensors of android-based smartphone into ROS1 topics. It captures camera, imu, magnetometer and (optionally) GPS data and publishes it into ROS1 topics.
+It uses [miniros](https://github.com/dkargin/miniroscpp) as a client.
 
-Topics, with `N` the camera id:
+Grabbure publishes following topics:
 
-- `<phone>/cameraN/image_raw` or `<phone>/cameraN/image_raw/compressed`
-- `<phone>/imu/raw` (`sensor_msgs/Imu`, gyroscope and accelerometer)
-- `<phone>/imu/temp` (`sensor_msgs/Temperature`) when the phone exposes a temperature sensor
-- `<phone>/mag/raw` (`sensor_msgs/MagneticField`)
-- `<phone>/gps` (`sensor_msgs/NavSatFix`) when Publish GPS is on and location permission is granted. Fixes come from GPS, network, or the fused provider, and the latest fix is repeated about once a second.
+- `<phone_name>/cameraN/image_raw` or `<phone>/cameraN/image_raw/compressed`
+- `<phone_name>/imu/raw` (`sensor_msgs/Imu`, gyroscope and accelerometer)
+- `<phone_name>/imu/temp` (`sensor_msgs/Temperature`) when the phone exposes a temperature sensor
+- `<phone_name>/mag/raw` (`sensor_msgs/MagneticField`)
+- `<phone_name>/gps` (`sensor_msgs/NavSatFix`) when Publish GPS is on and location permission is granted.
 
-`<phone>/imu/filtered` and `<phone>/mag/filtered` are the names reserved for filtered streams. They are advertised when a filter is publishing.
+Grabbure can connect either to external ROS1/miniros master or host own master, so external clients can connect. It also provides an option to store all data streams directly to ROS BAG file. 
 
-Open this directory in Android Studio (`/media/dkargin/dkargin-bags/android-studio`). `local.properties` points at the SDK and at `/usr/bin/cmake`. The native library links `~/install-android/<abi>` and is built for `arm64-v8a` only.
+## Build
+
+The app is built with Android Studio. Gradle compiles miniros from source once for each ABI it builds. With no `abiFilters`, that is the NDK default set: `armeabi-v7a`, `arm64-v8a`, `x86`, and `x86_64`. There is no separate miniros install step.
+
+Create `local.properties` in this directory (it is not committed):
+
+```
+sdk.dir=/path/to/Android/SDK
+cmake.dir=/usr
+miniros.dir=/path/to/miniroscpp
+```
+
+`sdk.dir` is the Android SDK. `cmake.dir` is the directory that contains the `cmake` executable (CMake 3.22 or newer; 3.28 is what this project asks Gradle to use). `miniros.dir` is the miniros source tree, the directory whose `CMakeLists.txt` starts with `project(miniros ...)`.
+
+The NDK version is `ndkVersion` in `app/build.gradle.kts` (`28.2.13676358`). Install that NDK from the SDK manager. The native build uses the NDK's `c++_static` runtime. Miniros is configured by that same Android toolchain: static `roscxx` and `bag_storage`, with bzip2 and lz4 from the miniros tree. `miniroscore` and `minibag` are not built as part of the app.
+
+Open this directory in Android Studio and run the app configuration. Studio builds `:app:assembleDebug`. To build a shorter ABI list, set `ndk.abiFilters` in `defaultConfig` in `app/build.gradle.kts`. Miniros follows that list.
 
 The node is initialized once per process, using the phone name. A different master or phone name is saved, then the process is restarted and that connection starts on the next launch. The phone must be on the same Wi-Fi network. Its IPv4 address is passed as the `__ip` remap. A local master is an in-process `master::Master` on port 11311. The app calls `update()` about ten times a second so discovery keeps going. Rosout is not started.
