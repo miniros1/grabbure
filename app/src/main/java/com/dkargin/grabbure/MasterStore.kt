@@ -61,6 +61,35 @@ class MasterStore(context: Context) {
         if (favoriteUri() == uri) prefs.edit().remove(KEY_FAVORITE).apply()
     }
 
+    /** Written with `commit` so a process restart can read it. */
+    fun setPending(local: Boolean, uri: String, label: String, phone: String) {
+        prefs.edit()
+            .putBoolean(KEY_PENDING, true)
+            .putBoolean(KEY_PENDING_LOCAL, local)
+            .putString(KEY_PENDING_URI, uri)
+            .putString(KEY_PENDING_LABEL, label)
+            .putString(KEY_PENDING_PHONE, phone)
+            .commit()
+    }
+
+    fun takePending(): Pending? {
+        if (!prefs.getBoolean(KEY_PENDING, false)) return null
+        val pending = Pending(
+            local = prefs.getBoolean(KEY_PENDING_LOCAL, false),
+            uri = prefs.getString(KEY_PENDING_URI, "").orEmpty(),
+            label = prefs.getString(KEY_PENDING_LABEL, "").orEmpty(),
+            phone = prefs.getString(KEY_PENDING_PHONE, "").orEmpty(),
+        )
+        prefs.edit()
+            .remove(KEY_PENDING)
+            .remove(KEY_PENDING_LOCAL)
+            .remove(KEY_PENDING_URI)
+            .remove(KEY_PENDING_LABEL)
+            .remove(KEY_PENDING_PHONE)
+            .commit()
+        return pending
+    }
+
     private fun write(items: List<Saved>) {
         val array = JSONArray()
         for (item in items) {
@@ -74,9 +103,16 @@ class MasterStore(context: Context) {
         prefs.edit().putString(KEY_MASTERS, array.toString()).apply()
     }
 
+    data class Pending(val local: Boolean, val uri: String, val label: String, val phone: String)
+
     companion object {
         private const val PREFS = "grabbure_masters"
         private const val KEY_MASTERS = "masters"
         private const val KEY_FAVORITE = "favorite"
+        private const val KEY_PENDING = "pending"
+        private const val KEY_PENDING_LOCAL = "pending_local"
+        private const val KEY_PENDING_URI = "pending_uri"
+        private const val KEY_PENDING_LABEL = "pending_label"
+        private const val KEY_PENDING_PHONE = "pending_phone"
     }
 }

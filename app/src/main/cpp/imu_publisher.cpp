@@ -1,8 +1,11 @@
 #include "imu_publisher.h"
 
+#include "node_session.h"
+
 #include <array>
 
 #include <sensor_msgs/Imu.hxx>
+#include <sensor_msgs/Temperature.hxx>
 
 namespace grabbure {
 namespace {
@@ -13,34 +16,51 @@ void markAbsent(std::array<double, 9>& covariance) {
 
 }  // namespace
 
-ImuPublisher::ImuPublisher(std::string sensorName)
-  : sensorName_(std::move(sensorName)) {}
-
-void ImuPublisher::start(miniros::NodeHandle& node) {
+void ImuPublisher::start(miniros::NodeHandle& node, bool temperature) {
   std::lock_guard<std::mutex> lock(mu_);
-  topic_ = sensorName_ + "/data";
-  pubImu = node.advertise<sensor_msgs::Imu>(topic_, 100);
+  miniros::NodeHandle sensor(node, "imu");
+  frameId_ = frameId(sensor);
+  pubRaw = sensor.advertise<sensor_msgs::Imu>("raw", 100);
+  pubFiltered = miniros::Publisher();
+  pubTemp = miniros::Publisher();
+  if (temperature) {
+    pubTemp = sensor.advertise<sensor_msgs::Temperature>("temp", 10);
+  }
 }
 
 void ImuPublisher::stop() {
   std::lock_guard<std::mutex> lock(mu_);
-  pubImu = miniros::Publisher();
-  topic_.clear();
+  pubRaw = miniros::Publisher();
+  pubFiltered = miniros::Publisher();
+  pubTemp = miniros::Publisher();
+  frameId_.clear();
   hasGyro_ = false;
   hasAccel_ = false;
 }
 
 std::string ImuPublisher::topic() const {
   std::lock_guard<std::mutex> lock(mu_);
-  return topic_;
+  return pubRaw.getTopic();
+}
+
+std::string ImuPublisher::temperatureTopic() const {
+  std::lock_guard<std::mutex> lock(mu_);
+  return pubTemp.getTopic();
 }
 
 std::vector<std::string> ImuPublisher::topics() const {
   std::lock_guard<std::mutex> lock(mu_);
-  if (!pubImu || topic_.empty()) {
-    return {};
+  std::vector<std::string> out;
+  if (pubRaw) {
+    out.push_back(pubRaw.getTopic());
   }
-  return {topic_};
+  if (pubFiltered) {
+    out.push_back(pubFiltered.getTopic());
+  }
+  if (pubTemp) {
+    out.push_back(pubTemp.getTopic());
+  }
+  return out;
 }
 
 bool ImuPublisher::pushGyroscope(double x, double y, double z) {
@@ -64,13 +84,27 @@ bool ImuPublisher::pushAccelerometer(double x, double y, double z) {
   return publishLocked();
 }
 
+bool ImuPublisher::publishTemperature(double celsius) {
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!pubTemp) {
+    return false;
+  }
+  sensor_msgs::Temperature msg;
+  msg.header.stamp = miniros::Time::now();
+  msg.header.frame_id = frameId_;
+  msg.temperature = celsius;
+  msg.variance = 0.0;
+  pubTemp.publish(msg);
+  return true;
+}
+
 bool ImuPublisher::publishLocked() {
-  if (!pubImu) {
+  if (!pubRaw) {
     return false;
   }
   sensor_msgs::Imu msg;
   msg.header.stamp = miniros::Time::now();
-  msg.header.frame_id = sensorName_;
+  msg.header.frame_id = frameId_;
   // No orientation estimate. A zero quaternion would look like identity.
   markAbsent(msg.orientation_covariance);
   if (hasGyro_) {
@@ -87,7 +121,7 @@ bool ImuPublisher::publishLocked() {
   } else {
     markAbsent(msg.linear_acceleration_covariance);
   }
-  pubImu.publish(msg);
+  pubRaw.publish(msg);
   return true;
 }
 

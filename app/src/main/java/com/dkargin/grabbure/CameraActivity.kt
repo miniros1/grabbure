@@ -2,7 +2,6 @@ package com.dkargin.grabbure
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.graphics.Matrix
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
@@ -35,6 +34,7 @@ class CameraActivity : AppCompatActivity() {
     private lateinit var masterUri: String
     private lateinit var masterLabel: String
     private lateinit var phoneIp: String
+    private lateinit var phoneName: String
 
     private val cameras = mutableListOf<CameraChoice>()
     private var formats = listOf<FormatChoice>()
@@ -52,12 +52,17 @@ class CameraActivity : AppCompatActivity() {
     @Volatile
     private var running = false
     private var pendingAutoStart = true
+    private var includeCameraOnGrant = false
+    private var permissionStartsSession = false
     private lateinit var motion: MotionGrabber
+    private lateinit var gps: GpsGrabber
     private val rateHandler = Handler(Looper.getMainLooper())
     private var lastRateTick = 0L
     private var lastFrames = 0
     private var lastImu = 0
     private var lastMag = 0
+    private var lastTemp = 0
+    private var lastGps = 0
     private val rateTick = object : Runnable {
         override fun run() {
             if (!running) return
@@ -66,9 +71,21 @@ class CameraActivity : AppCompatActivity() {
         }
     }
 
-    private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (!granted) toast(getString(R.string.camera_permission_denied))
-        begin(granted)
+    private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        val cameraGranted = granted(Manifest.permission.CAMERA)
+        val locationGranted = granted(Manifest.permission.ACCESS_FINE_LOCATION)
+        if (permissionStartsSession && includeCameraOnGrant && !cameraGranted) {
+            toast(getString(R.string.camera_permission_denied))
+        }
+        if (publishGpsChecked() && !locationGranted) {
+            toast(getString(R.string.location_permission_denied))
+            binding.publishGps.isChecked = false
+        }
+        if (permissionStartsSession) {
+            begin(includeCameraOnGrant && cameraGranted)
+        } else if (locationGranted && running && publishGpsChecked()) {
+            startGpsPublishing()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -78,9 +95,11 @@ class CameraActivity : AppCompatActivity() {
         masterUri = intent.getStringExtra(EXTRA_URI).orEmpty()
         masterLabel = intent.getStringExtra(EXTRA_LABEL).orEmpty()
         phoneIp = intent.getStringExtra(EXTRA_IP).orEmpty()
+        phoneName = PhoneName.sanitize(intent.getStringExtra(EXTRA_PHONE).orEmpty())
         binding.master.text = getString(R.string.master_line, masterLabel, masterUri)
         binding.preview.surfaceTextureListener = surfaceListener
         motion = MotionGrabber(this)
+        gps = GpsGrabber(this)
         binding.details.setOnClickListener {
             val show = binding.topics.visibility != View.VISIBLE
             binding.topics.visibility = if (show) View.VISIBLE else View.GONE
@@ -91,6 +110,7 @@ class CameraActivity : AppCompatActivity() {
             if (running) stopCapture() else requestStart()
         }
         loadMagRate()
+        loadGpsOption()
         loadCameras()
     }
 
@@ -98,6 +118,48 @@ class CameraActivity : AppCompatActivity() {
         stopCapture()
         publishExecutor.shutdown()
         super.onDestroy()
+    }
+
+    private fun loadGpsOption() {
+        binding.publishGps.isEnabled = gps.available
+        binding.publishGps.isChecked = gps.available && prefs().getBoolean(KEY_GPS, false)
+        binding.publishGps.setOnCheckedChangeListener { _, checked ->
+            prefs().edit().putBoolean(KEY_GPS, checked).apply()
+            if (!checked) {
+                gps.stop()
+                return@setOnCheckedChangeListener
+            }
+            if (!locationGranted()) {
+                permissionStartsSession = false
+                permissions.launch(locationPermissions())
+                return@setOnCheckedChangeListener
+            }
+            if (running) startGpsPublishing()
+        }
+    }
+
+    private fun publishGpsChecked(): Boolean = binding.publishGps.isChecked
+
+    private fun locationGranted(): Boolean {
+        return granted(Manifest.permission.ACCESS_FINE_LOCATION) &&
+            granted(Manifest.permission.ACCESS_COARSE_LOCATION)
+    }
+
+    private fun locationPermissions(): Array<String> {
+        return arrayOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+        )
+    }
+
+    private fun startGpsPublishing() {
+        val error = gps.advertise()
+        if (error != null) {
+            binding.status.text = error
+            AppLog.line(error)
+            return
+        }
+        gps.listen()
     }
 
     private fun loadMagRate() {
@@ -132,9 +194,7 @@ class CameraActivity : AppCompatActivity() {
                 CameraCharacteristics.LENS_FACING_BACK -> getString(R.string.camera_back)
                 else -> getString(R.string.camera_external)
             }
-            val sensorOrientation = chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
-            val front = chars.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT
-            cameras.add(CameraChoice(id, "$facing ($id)", jpeg, yuv, sensorOrientation, front))
+            cameras.add(CameraChoice(id, "$facing ($id)", jpeg, yuv))
         }
         if (cameras.isEmpty()) {
             binding.status.text = getString(R.string.no_cameras)
@@ -205,71 +265,29 @@ class CameraActivity : AppCompatActivity() {
 
     private fun selectedSize(): Size? = sizes.getOrNull(binding.resolution.selectedItemPosition)
 
-    private fun selectedCamera(): CameraChoice? = cameras.getOrNull(binding.camera.selectedItemPosition)
-
-    /** Degrees to rotate the sensor buffer so it is upright on this display. */
-    private fun previewRotation(camera: CameraChoice): Int {
-        val device = when (binding.preview.display?.rotation ?: Surface.ROTATION_0) {
-            Surface.ROTATION_90 -> 90
-            Surface.ROTATION_180 -> 180
-            Surface.ROTATION_270 -> 270
-            else -> 0
-        }
-        val sign = if (camera.front) 1 else -1
-        return (camera.sensorOrientation - device * sign + 360) % 360
-    }
-
-    private fun fitPreview(size: Size?) {
-        val camera = selectedCamera()
-        if (size == null || camera == null || size.width <= 0 || size.height <= 0) return
-        val parent = binding.preview.parent as? android.view.View ?: return
-        parent.post {
-            val available = parent.width - parent.paddingLeft - parent.paddingRight
-            if (available <= 0) return@post
-            val swap = previewRotation(camera) % 180 != 0
-            val aspect = if (swap) {
-                size.height.toFloat() / size.width.toFloat()
-            } else {
-                size.width.toFloat() / size.height.toFloat()
-            }
-            var targetWidth = available
-            var targetHeight = (targetWidth / aspect).toInt().coerceAtLeast(1)
-            val maxHeight = (resources.displayMetrics.heightPixels * 0.45f).toInt()
-            if (targetHeight > maxHeight && maxHeight > 0) {
-                targetHeight = maxHeight
-                targetWidth = (targetHeight * aspect).toInt().coerceAtLeast(1)
-            }
-            val params = binding.preview.layoutParams
-            if (params.width != targetWidth || params.height != targetHeight) {
-                params.width = targetWidth
-                params.height = targetHeight
-                binding.preview.layoutParams = params
-            }
-            binding.preview.post { orientPreview(size) }
-        }
-    }
-
     /**
-     * TextureView first stretches the sensor buffer to the view. A 90° or 270° sensor
-     * needs that stretch undone and then a rotation, or a portrait preview is widened.
+     * TextureView draws the capture buffer with width and height exchanged.
+     * The view uses that shape so the picture is scaled evenly. It is not rotated upright.
      */
-    private fun orientPreview(buffer: Size) {
-        val camera = selectedCamera() ?: return
-        val view = binding.preview
-        val viewWidth = view.width.toFloat()
-        val viewHeight = view.height.toFloat()
-        if (viewWidth <= 0f || viewHeight <= 0f || buffer.width <= 0 || buffer.height <= 0) return
-        val rotation = previewRotation(camera)
-        val matrix = Matrix()
-        val centerX = viewWidth / 2f
-        val centerY = viewHeight / 2f
-        if (rotation == 90 || rotation == 270) {
-            matrix.postScale(viewHeight / viewWidth, viewWidth / viewHeight, centerX, centerY)
-            matrix.postRotate(rotation.toFloat(), centerX, centerY)
-        } else if (rotation == 180) {
-            matrix.postRotate(180f, centerX, centerY)
+    private fun fitPreview(size: Size?) {
+        if (size == null || size.width <= 0 || size.height <= 0) return
+        val parent = binding.preview.parent as? View ?: return
+        val available = parent.width - parent.paddingLeft - parent.paddingRight
+        if (available <= 0) return
+        val aspect = size.height.toFloat() / size.width.toFloat()
+        var targetWidth = available
+        var targetHeight = (targetWidth / aspect).toInt().coerceAtLeast(1)
+        val maxHeight = (resources.displayMetrics.heightPixels * 0.45f).toInt()
+        if (targetHeight > maxHeight && maxHeight > 0) {
+            targetHeight = maxHeight
+            targetWidth = (targetHeight * aspect).toInt().coerceAtLeast(1)
         }
-        view.setTransform(matrix)
+        val params = binding.preview.layoutParams
+        if (params.width != targetWidth || params.height != targetHeight) {
+            params.width = targetWidth
+            params.height = targetHeight
+            binding.preview.layoutParams = params
+        }
     }
 
     private fun scheduleAutoStart() {
@@ -280,12 +298,28 @@ class CameraActivity : AppCompatActivity() {
 
     private fun requestStart() {
         if (running) return
-        val wantCamera = cameras.isNotEmpty()
-        if (wantCamera && ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            permission.launch(Manifest.permission.CAMERA)
-            return
+        includeCameraOnGrant = cameras.isNotEmpty()
+        permissionStartsSession = true
+        val missing = buildList {
+            if (includeCameraOnGrant && !granted(Manifest.permission.CAMERA)) {
+                add(Manifest.permission.CAMERA)
+            }
+            if (publishGpsChecked() && !granted(Manifest.permission.ACCESS_FINE_LOCATION)) {
+                add(Manifest.permission.ACCESS_FINE_LOCATION)
+            }
+            if (publishGpsChecked() && !granted(Manifest.permission.ACCESS_COARSE_LOCATION)) {
+                add(Manifest.permission.ACCESS_COARSE_LOCATION)
+            }
         }
-        begin(wantCamera)
+        if (missing.isEmpty()) {
+            begin(includeCameraOnGrant)
+        } else {
+            permissions.launch(missing.toTypedArray())
+        }
+    }
+
+    private fun granted(permission: String): Boolean {
+        return ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun begin(includeCamera: Boolean) {
@@ -305,22 +339,29 @@ class CameraActivity : AppCompatActivity() {
         setControlsEnabled(false)
         binding.start.setText(R.string.stop)
         binding.status.text = getString(R.string.connecting)
-        val filesDir = filesDir.absolutePath
+        val publishGps = publishGpsChecked()
         Thread {
-            val nodeError = NativeBridge.nodeStart(masterUri, phoneIp, filesDir)
+            val nodeError = NativeBridge.nodeStart(masterUri, phoneIp, phoneName)
             val jpegMode = jpeg
-            val pubError = if (nodeError == null && includeCamera && jpegMode != null) {
-                NativeBridge.startPublisher(jpegMode)
+            val idForTopic = cameraId
+            val pubError = if (nodeError == null && includeCamera && jpegMode != null && idForTopic != null) {
+                NativeBridge.startPublisher(idForTopic, jpegMode)
             } else {
                 null
             }
             val motionError = if (nodeError == null && pubError == null) motion.advertise() else null
+            val gpsError = if (publishGps && nodeError == null && pubError == null && motionError == null) {
+                gps.advertise()
+            } else {
+                null
+            }
             runOnUiThread {
-                val error = nodeError ?: pubError ?: motionError
+                val error = nodeError ?: pubError ?: motionError ?: gpsError
                 if (!running || error != null) {
                     running = false
                     stopRates()
                     motion.stop()
+                    gps.stop()
                     try {
                         NativeBridge.stopPublisher()
                     } catch (_: UnsatisfiedLinkError) {
@@ -334,6 +375,7 @@ class CameraActivity : AppCompatActivity() {
                     return@runOnUiThread
                 }
                 motion.listen()
+                if (publishGps) gps.listen()
                 val id = cameraId
                 val mode = jpegMode
                 val frame = size
@@ -447,6 +489,8 @@ class CameraActivity : AppCompatActivity() {
         val framesNow = frames.get()
         val imuNow = motion.imuSamples()
         val magNow = motion.magnetometerSamples()
+        val tempNow = motion.temperatureSamples()
+        val gpsNow = gps.samples()
         if (lastRateTick > 0L) {
             val seconds = (now - lastRateTick) / 1000.0
             if (seconds > 0.0) {
@@ -460,6 +504,12 @@ class CameraActivity : AppCompatActivity() {
                 if (NativeBridge.magnetometerTopic().isNotEmpty()) {
                     lines.add(rateLine("mag", (magNow - lastMag) / seconds))
                 }
+                if (NativeBridge.temperatureTopic().isNotEmpty()) {
+                    lines.add(rateLine("temp", (tempNow - lastTemp) / seconds))
+                }
+                if (NativeBridge.gpsTopic().isNotEmpty()) {
+                    lines.add(rateLine("gps", (gpsNow - lastGps) / seconds))
+                }
                 binding.rates.text = lines.joinToString("\n")
             }
         }
@@ -467,6 +517,8 @@ class CameraActivity : AppCompatActivity() {
         lastFrames = framesNow
         lastImu = imuNow
         lastMag = magNow
+        lastTemp = tempNow
+        lastGps = gpsNow
         if (binding.topics.visibility == View.VISIBLE) refreshTopics()
     }
 
@@ -496,6 +548,7 @@ class CameraActivity : AppCompatActivity() {
         cameraThread = null
         cameraHandler = null
         if (::motion.isInitialized) motion.stop()
+        if (::gps.isInitialized) gps.stop()
         try {
             NativeBridge.stopPublisher()
         } catch (_: UnsatisfiedLinkError) {
@@ -543,9 +596,7 @@ class CameraActivity : AppCompatActivity() {
             openCamera(choice.id, format.jpeg, size)
         }
 
-        override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {
-            orientPreview(selectedSize() ?: return)
-        }
+        override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {}
 
         override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean = true
 
@@ -557,8 +608,6 @@ class CameraActivity : AppCompatActivity() {
         val label: String,
         val jpeg: List<Size>,
         val yuv: List<Size>,
-        val sensorOrientation: Int,
-        val front: Boolean,
     )
 
     private data class FormatChoice(
@@ -571,12 +620,14 @@ class CameraActivity : AppCompatActivity() {
         const val EXTRA_URI = "master_uri"
         const val EXTRA_LABEL = "master_label"
         const val EXTRA_IP = "phone_ip"
+        const val EXTRA_PHONE = "phone_name"
         private const val PREFS = "grabbure_camera"
         private const val KEY_CAMERA = "camera_id"
         private const val KEY_JPEG = "jpeg"
         private const val KEY_WIDTH = "width"
         private const val KEY_HEIGHT = "height"
         private const val KEY_MAG_HZ = "mag_hz"
+        private const val KEY_GPS = "gps"
         private val MAG_RATES = intArrayOf(100, 50)
     }
 }

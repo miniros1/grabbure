@@ -1,5 +1,7 @@
 #include "magnetometer_publisher.h"
 
+#include "node_session.h"
+
 #include <sensor_msgs/MagneticField.hxx>
 
 namespace grabbure {
@@ -9,37 +11,41 @@ constexpr double kMicroteslaToTesla = 1e-6;
 
 }  // namespace
 
-MagnetometerPublisher::MagnetometerPublisher(std::string sensorName)
-  : sensorName_(std::move(sensorName)) {}
-
 void MagnetometerPublisher::start(miniros::NodeHandle& node) {
   std::lock_guard<std::mutex> lock(mu_);
-  topic_ = sensorName_ + "/data";
-  pubField = node.advertise<sensor_msgs::MagneticField>(topic_, 50);
+  miniros::NodeHandle sensor(node, "mag");
+  frameId_ = frameId(sensor);
+  pubRaw = sensor.advertise<sensor_msgs::MagneticField>("raw", 50);
+  pubFiltered = miniros::Publisher();
 }
 
 void MagnetometerPublisher::stop() {
   std::lock_guard<std::mutex> lock(mu_);
-  pubField = miniros::Publisher();
-  topic_.clear();
+  pubRaw = miniros::Publisher();
+  pubFiltered = miniros::Publisher();
+  frameId_.clear();
 }
 
 std::string MagnetometerPublisher::topic() const {
   std::lock_guard<std::mutex> lock(mu_);
-  return topic_;
+  return pubRaw.getTopic();
 }
 
 std::vector<std::string> MagnetometerPublisher::topics() const {
   std::lock_guard<std::mutex> lock(mu_);
-  if (!pubField || topic_.empty()) {
-    return {};
+  std::vector<std::string> out;
+  if (pubRaw) {
+    out.push_back(pubRaw.getTopic());
   }
-  return {topic_};
+  if (pubFiltered) {
+    out.push_back(pubFiltered.getTopic());
+  }
+  return out;
 }
 
 bool MagnetometerPublisher::publish(double xUt, double yUt, double zUt) {
   std::lock_guard<std::mutex> lock(mu_);
-  if (!pubField) {
+  if (!pubRaw) {
     return false;
   }
   xUt_ = xUt;
@@ -47,11 +53,11 @@ bool MagnetometerPublisher::publish(double xUt, double yUt, double zUt) {
   zUt_ = zUt;
   sensor_msgs::MagneticField msg;
   msg.header.stamp = miniros::Time::now();
-  msg.header.frame_id = sensorName_;
+  msg.header.frame_id = frameId_;
   msg.magnetic_field.x = xUt_ * kMicroteslaToTesla;
   msg.magnetic_field.y = yUt_ * kMicroteslaToTesla;
   msg.magnetic_field.z = zUt_ * kMicroteslaToTesla;
-  pubField.publish(msg);
+  pubRaw.publish(msg);
   return true;
 }
 

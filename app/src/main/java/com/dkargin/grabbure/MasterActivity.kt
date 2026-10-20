@@ -16,6 +16,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.dkargin.grabbure.databinding.ActivityMasterBinding
+import kotlin.system.exitProcess
 
 class MasterActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMasterBinding
@@ -24,6 +25,8 @@ class MasterActivity : AppCompatActivity() {
     private var heard = emptyList<DiscoveredMaster>()
     private var multicastLock: WifiManager.MulticastLock? = null
     private val handler = Handler(Looper.getMainLooper())
+    private var keepNetwork = false
+    private var openedPending = false
     private val poll = object : Runnable {
         override fun run() {
             refresh()
@@ -36,7 +39,9 @@ class MasterActivity : AppCompatActivity() {
         binding = ActivityMasterBinding.inflate(layoutInflater)
         setContentView(binding.root)
         adapter = MasterAdapter(
-            onOpen = { master -> openSession(master.uri, master.label) },
+            onOpen = { master ->
+                choose(master.local, master.uri, master.label)
+            },
             onFavorite = { master ->
                 if (master.favorite) store.clearFavorite() else store.setFavorite(master.uri, master.label)
                 showMasters()
@@ -49,6 +54,7 @@ class MasterActivity : AppCompatActivity() {
         binding.masters.layoutManager = LinearLayoutManager(this)
         binding.masters.adapter = adapter
         binding.addMaster.setOnClickListener { addManual() }
+        binding.phoneName.setText(PhoneName.load(this))
         showMasters()
         binding.showLog.setOnCheckedChangeListener { _, checked ->
             binding.logScroll.visibility = if (checked) View.VISIBLE else View.GONE
@@ -87,10 +93,18 @@ class MasterActivity : AppCompatActivity() {
             binding.status.text = error
             AppLog.line(error)
             flushLog()
-            return
+        } else {
+            AppLog.line("Discovery started")
+            handler.post(poll)
         }
-        AppLog.line("Discovery started")
-        handler.post(poll)
+        if (!openedPending) {
+            openedPending = true
+            val pending = store.takePending()
+            if (pending != null) {
+                binding.phoneName.setText(PhoneName.sanitize(pending.phone))
+                choose(pending.local, pending.uri, pending.label)
+            }
+        }
     }
 
     override fun onStop() {
@@ -100,9 +114,11 @@ class MasterActivity : AppCompatActivity() {
         } catch (_: UnsatisfiedLinkError) {
         }
         AppLog.line("Discovery stopped")
-        multicastLock?.let { if (it.isHeld) it.release() }
-        multicastLock = null
-        getSystemService(ConnectivityManager::class.java)?.bindProcessToNetwork(null)
+        if (!keepNetwork) {
+            multicastLock?.let { if (it.isHeld) it.release() }
+            multicastLock = null
+            getSystemService(ConnectivityManager::class.java)?.bindProcessToNetwork(null)
+        }
         super.onStop()
     }
 
@@ -180,7 +196,16 @@ class MasterActivity : AppCompatActivity() {
                 .thenByDescending { it.manual }
                 .thenBy { it.label },
         )
-        adapter.submit(ordered)
+        val local = KnownMaster(
+            uri = "",
+            label = getString(R.string.local_master),
+            manual = false,
+            favorite = false,
+            saved = false,
+            hasToken = false,
+            local = true,
+        )
+        adapter.submit(listOf(local) + ordered)
     }
 
     private fun flushLog() {
@@ -211,6 +236,96 @@ class MasterActivity : AppCompatActivity() {
         flushLog()
     }
 
+    private fun choose(local: Boolean, uri: String, label: String) {
+        if (!local && uri.isBlank()) {
+            Toast.makeText(this, R.string.master_without_address, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val phone = PhoneName.sanitize(binding.phoneName.text.toString())
+        binding.phoneName.setText(phone)
+        if (restartIfNeeded(local, uri, label, phone)) return
+        if (local) startLocal() else openSession(uri, label)
+    }
+
+    /**
+     * The process can join only one master. A different master or phone name is saved,
+     * then a helper process brings the app back and [onStart] opens that connection.
+     */
+    private fun restartIfNeeded(local: Boolean, uri: String, label: String, phone: String): Boolean {
+        val started = try {
+            NativeBridge.nodeStarted()
+        } catch (_: UnsatisfiedLinkError) {
+            return false
+        }
+        if (!started) return false
+        val currentPhone = try {
+            NativeBridge.nodeName()
+        } catch (_: UnsatisfiedLinkError) {
+            ""
+        }
+        val runningLocal = try {
+            NativeBridge.localMasterUri().isNotBlank()
+        } catch (_: UnsatisfiedLinkError) {
+            false
+        }
+        val currentUri = try {
+            NativeBridge.nodeMaster()
+        } catch (_: UnsatisfiedLinkError) {
+            ""
+        }
+        val sameTarget = if (local) runningLocal else !runningLocal && currentUri == uri
+        if (currentPhone == phone && sameTarget) return false
+        store.setPending(local, uri, label, phone)
+        binding.status.text = getString(R.string.restarting_connection)
+        AppLog.line("Restarting to connect to " + if (local) label else uri)
+        startActivity(
+            Intent(this, RestartActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+        finishAffinity()
+        android.os.Process.killProcess(android.os.Process.myPid())
+        exitProcess(0)
+    }
+
+    private fun startLocal() {
+        val address = NetInfo.wifiIpv4(this)
+        if (address == null) {
+            Toast.makeText(this, R.string.no_wifi_address, Toast.LENGTH_LONG).show()
+            return
+        }
+        val phone = PhoneName.save(this, binding.phoneName.text.toString())
+        binding.phoneName.setText(phone)
+        binding.status.text = getString(R.string.starting_local_master)
+        Thread {
+            val error = try {
+                NativeBridge.startLocalMaster(address, phone)
+            } catch (ex: UnsatisfiedLinkError) {
+                ex.message ?: "Native library failed to load"
+            }
+            val uri = if (error == null) {
+                try {
+                    NativeBridge.localMasterUri()
+                } catch (ex: UnsatisfiedLinkError) {
+                    ex.message
+                }
+            } else {
+                null
+            }
+            runOnUiThread {
+                if (error != null || uri.isNullOrBlank()) {
+                    val message = error ?: getString(R.string.starting_local_master)
+                    binding.status.text = message
+                    AppLog.line(message)
+                    flushLog()
+                    return@runOnUiThread
+                }
+                keepNetwork = true
+                LocalMasterPump.start()
+                AppLog.line("Local master $uri")
+                openSession(uri, getString(R.string.local_master))
+            }
+        }.start()
+    }
+
     private fun openSession(uri: String, label: String) {
         if (uri.isBlank()) {
             Toast.makeText(this, R.string.master_without_address, Toast.LENGTH_SHORT).show()
@@ -221,12 +336,36 @@ class MasterActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.no_wifi_address, Toast.LENGTH_LONG).show()
             return
         }
+        val phone = PhoneName.save(this, binding.phoneName.text.toString())
+        binding.phoneName.setText(phone)
         startActivity(
             Intent(this, CameraActivity::class.java)
                 .putExtra(CameraActivity.EXTRA_URI, uri)
                 .putExtra(CameraActivity.EXTRA_LABEL, label)
-                .putExtra(CameraActivity.EXTRA_IP, address),
+                .putExtra(CameraActivity.EXTRA_IP, address)
+                .putExtra(CameraActivity.EXTRA_PHONE, phone),
         )
+    }
+}
+
+/** Calls `Master.update` so discovery and node checks keep running. */
+private object LocalMasterPump {
+    private const val PERIOD_MS = 100L
+    private val thread = android.os.HandlerThread("master-update").apply { start() }
+    private val handler = Handler(thread.looper)
+    private val tick = object : Runnable {
+        override fun run() {
+            try {
+                NativeBridge.masterUpdate()
+            } catch (_: UnsatisfiedLinkError) {
+            }
+            handler.postDelayed(this, PERIOD_MS)
+        }
+    }
+
+    fun start() {
+        handler.removeCallbacks(tick)
+        handler.post(tick)
     }
 }
 
@@ -259,6 +398,7 @@ private data class KnownMaster(
     val favorite: Boolean,
     val saved: Boolean,
     val hasToken: Boolean,
+    val local: Boolean = false,
 )
 
 private class MasterAdapter(
@@ -283,15 +423,14 @@ private class MasterAdapter(
         val master = items[position]
         val context = holder.itemView.context
         holder.title.text = master.label
-        val tags = buildList {
-            if (master.manual) add(context.getString(R.string.tag_manual))
-            if (master.favorite) add(context.getString(R.string.tag_favorite))
-            if (master.hasToken) add(context.getString(R.string.with_token))
-        }
-        holder.subtitle.text = if (tags.isEmpty()) master.uri else master.uri + " · " + tags.joinToString(" · ")
         holder.itemView.setOnClickListener { onOpen(master) }
-        holder.favorite.setText(if (master.favorite) R.string.unfavorite else R.string.favorite)
-        holder.favorite.visibility = if (master.uri.isBlank()) View.GONE else View.VISIBLE
+        holder.favorite.visibility = if (master.local || master.uri.isBlank()) View.GONE else View.VISIBLE
+        holder.favorite.setIconResource(
+            if (master.favorite) R.drawable.ic_favorite else R.drawable.ic_favorite_border,
+        )
+        holder.favorite.contentDescription = context.getString(
+            if (master.favorite) R.string.unfavorite else R.string.favorite,
+        )
         holder.favorite.setOnClickListener { onFavorite(master) }
         holder.remove.visibility = if (master.saved) View.VISIBLE else View.GONE
         holder.remove.setOnClickListener { onRemove(master) }
@@ -301,8 +440,7 @@ private class MasterAdapter(
 
     class Holder(view: View) : RecyclerView.ViewHolder(view) {
         val title: TextView = view.findViewById(R.id.title)
-        val subtitle: TextView = view.findViewById(R.id.subtitle)
-        val favorite: android.widget.Button = view.findViewById(R.id.favorite)
-        val remove: android.widget.Button = view.findViewById(R.id.remove)
+        val favorite: com.google.android.material.button.MaterialButton = view.findViewById(R.id.favorite)
+        val remove: com.google.android.material.button.MaterialButton = view.findViewById(R.id.remove)
     }
 }

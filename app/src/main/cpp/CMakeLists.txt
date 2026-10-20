@@ -20,6 +20,7 @@ add_library(grabbure SHARED
   camera_publisher.cpp
   imu_publisher.cpp
   magnetometer_publisher.cpp
+  gps_publisher.cpp
   sensors_bridge.cpp
   discovery_bridge.cpp
   log_forwarder.cpp)

@@ -66,6 +66,13 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content" />
 
+        <CheckBox
+            android:id="@+id/publishGps"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/publish_gps" />
+
         <Button
             android:id="@+id/start"
             android:layout_width="match_parent"

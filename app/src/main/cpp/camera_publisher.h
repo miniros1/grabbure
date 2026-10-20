@@ -13,16 +13,14 @@
 
 namespace grabbure {
 
-/// Publishes one camera. The sensor name is the topic prefix:
-/// `<name>/image_raw`, `<name>/image_raw/compressed`, and later `<name>/camera_info`.
+/// Publishes one camera on a child handle `cameraN`.
+/// Image topics are `image_raw` and `image_raw/compressed`. `camera_info` is added when advertised.
 class CameraPublisher {
  public:
-  explicit CameraPublisher(std::string sensorName = "android_camera");
-
-  const std::string& sensorName() const { return sensorName_; }
+  CameraPublisher() = default;
 
   /// Advertise either the raw image or the compressed image. The other publisher is cleared.
-  void start(miniros::NodeHandle& node, bool compressed);
+  void start(miniros::NodeHandle& node, const std::string& cameraId, bool compressed);
 
   void stop();
 
@@ -39,12 +37,11 @@ class CameraPublisher {
   /// Same header as the image. No-op until `pubInfo` is advertised.
   void publishInfo(const std_msgs::Header& header, uint32_t width, uint32_t height);
 
-  std::string sensorName_;
+  std::string frameId_;
   mutable std::mutex mu_;
   miniros::Publisher pubRaw;
   miniros::Publisher pubCompressed;
   miniros::Publisher pubInfo;
-  std::string topic_;
 };
 
 }  // namespace grabbure

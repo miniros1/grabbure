@@ -17,8 +17,16 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:paddingTop="4dp"
-        android:paddingBottom="8dp"
         android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+    <EditText
+        android:id="@+id/phoneName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/phone_name_hint"
+        android:importantForAutofill="no"
+        android:inputType="text"
+        android:singleLine="true" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/masters"

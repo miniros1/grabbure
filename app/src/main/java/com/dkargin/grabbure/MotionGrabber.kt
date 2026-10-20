@@ -16,7 +16,9 @@ class MotionGrabber(
     private val sensors = context.getSystemService(SensorManager::class.java)
     private val gyro = sensors.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
     private val accel = sensors.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-    private val magnetometer = sensors.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+    private val magnetometer = sensors.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED)
+        ?: sensors.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+    private val temperature = pickTemperature(sensors)
 
     private var magPeriodUs = 10_000
     private var thread: HandlerThread? = null
@@ -24,14 +26,27 @@ class MotionGrabber(
     private var listening = false
     private val imuPublished = AtomicInteger()
     private val magPublished = AtomicInteger()
+    private val tempPublished = AtomicInteger()
 
     fun imuSamples(): Int = imuPublished.get()
 
     fun magnetometerSamples(): Int = magPublished.get()
 
+    fun temperatureSamples(): Int = tempPublished.get()
+
     private val listener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
-            if (!listening || event.values.size < 3) return
+            if (!listening) return
+            val sensor = temperature
+            if (sensor != null && event.sensor.type == sensor.type) {
+                if (event.values.isNotEmpty() &&
+                    NativeBridge.publishTemperature(event.values[0].toDouble())
+                ) {
+                    tempPublished.incrementAndGet()
+                }
+                return
+            }
+            if (event.values.size < 3) return
             val x = event.values[0].toDouble()
             val y = event.values[1].toDouble()
             val z = event.values[2].toDouble()
@@ -42,7 +57,7 @@ class MotionGrabber(
                 Sensor.TYPE_ACCELEROMETER -> {
                     if (NativeBridge.publishAccel(x, y, z)) imuPublished.incrementAndGet()
                 }
-                Sensor.TYPE_MAGNETIC_FIELD -> {
+                magnetometer?.type -> {
                     if (NativeBridge.publishMagneticField(x, y, z)) magPublished.incrementAndGet()
                 }
             }
@@ -55,7 +70,7 @@ class MotionGrabber(
     fun advertise(): String? {
         val publishImu = gyro != null || accel != null
         val publishMag = magnetometer != null
-        val imuError = if (publishImu) NativeBridge.startImu() else null
+        val imuError = if (publishImu) NativeBridge.startImu(temperature != null) else null
         val magError = if (imuError == null && publishMag) NativeBridge.startMagnetometer() else null
         if (imuError != null || magError != null) {
             NativeBridge.stopImu()
@@ -72,6 +87,9 @@ class MotionGrabber(
         gyro?.let { sensors.registerListener(listener, it, periodUs(it, IMU_PERIOD_US), callbackHandler) }
         accel?.let { sensors.registerListener(listener, it, periodUs(it, IMU_PERIOD_US), callbackHandler) }
         registerMagnetometer(callbackHandler)
+        temperature?.let {
+            sensors.registerListener(listener, it, SensorManager.SENSOR_DELAY_NORMAL, callbackHandler)
+        }
     }
 
     fun stop() {
@@ -112,6 +130,20 @@ class MotionGrabber(
         val fastest = sensor.minDelay
         if (fastest <= 0) return targetUs
         return fastest.coerceAtLeast(targetUs)
+    }
+
+    private fun pickTemperature(manager: SensorManager): Sensor? {
+        val temps = manager.getSensorList(Sensor.TYPE_ALL).filter { sensor ->
+            val type = sensor.stringType.lowercase()
+            type.contains("temp") ||
+                sensor.type == Sensor.TYPE_AMBIENT_TEMPERATURE ||
+                sensor.type == Sensor.TYPE_TEMPERATURE
+        }
+        return temps.firstOrNull { sensor ->
+            val blob = (sensor.stringType + " " + sensor.name).lowercase()
+            blob.contains("gyro") || blob.contains("imu") || blob.contains("icm") || blob.contains("bmi")
+        } ?: temps.firstOrNull { it.type == Sensor.TYPE_TEMPERATURE }
+            ?: temps.firstOrNull()
     }
 
     companion object {

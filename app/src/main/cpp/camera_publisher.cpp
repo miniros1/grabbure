@@ -1,22 +1,23 @@
 #include "camera_publisher.h"
 
+#include "node_session.h"
+
 #include <sensor_msgs/CameraInfo.hxx>
 
 namespace grabbure {
 
-CameraPublisher::CameraPublisher(std::string sensorName)
-  : sensorName_(std::move(sensorName)) {}
-
-void CameraPublisher::start(miniros::NodeHandle& node, bool compressed) {
+void CameraPublisher::start(miniros::NodeHandle& node, const std::string& cameraId,
+                            bool compressed) {
   std::lock_guard<std::mutex> lock(mu_);
+  const std::string camera = std::string("camera") + (cameraId.empty() ? "0" : cameraId);
+  miniros::NodeHandle sensor(node, camera);
+  frameId_ = frameId(sensor);
   pubRaw = miniros::Publisher();
   pubCompressed = miniros::Publisher();
   if (compressed) {
-    topic_ = sensorName_ + "/image_raw/compressed";
-    pubCompressed = node.advertise<sensor_msgs::CompressedImage>(topic_, 1);
+    pubCompressed = sensor.advertise<sensor_msgs::CompressedImage>("image_raw/compressed", 1);
   } else {
-    topic_ = sensorName_ + "/image_raw";
-    pubRaw = node.advertise<sensor_msgs::Image>(topic_, 1);
+    pubRaw = sensor.advertise<sensor_msgs::Image>("image_raw", 1);
   }
 }
 
@@ -25,25 +26,28 @@ void CameraPublisher::stop() {
   pubRaw = miniros::Publisher();
   pubCompressed = miniros::Publisher();
   pubInfo = miniros::Publisher();
-  topic_.clear();
+  frameId_.clear();
 }
 
 std::string CameraPublisher::topic() const {
   std::lock_guard<std::mutex> lock(mu_);
-  return topic_;
+  if (pubCompressed) {
+    return pubCompressed.getTopic();
+  }
+  return pubRaw.getTopic();
 }
 
 std::vector<std::string> CameraPublisher::topics() const {
   std::lock_guard<std::mutex> lock(mu_);
   std::vector<std::string> out;
   if (pubRaw) {
-    out.push_back(sensorName_ + "/image_raw");
+    out.push_back(pubRaw.getTopic());
   }
   if (pubCompressed) {
-    out.push_back(sensorName_ + "/image_raw/compressed");
+    out.push_back(pubCompressed.getTopic());
   }
   if (pubInfo) {
-    out.push_back(sensorName_ + "/camera_info");
+    out.push_back(pubInfo.getTopic());
   }
   return out;
 }
@@ -54,7 +58,7 @@ bool CameraPublisher::publishRaw(sensor_msgs::Image& msg) {
     return false;
   }
   msg.header.stamp = miniros::Time::now();
-  msg.header.frame_id = sensorName_;
+  msg.header.frame_id = frameId_;
   pubRaw.publish(msg);
   publishInfo(msg.header, msg.width, msg.height);
   return true;
@@ -66,7 +70,7 @@ bool CameraPublisher::publishCompressed(sensor_msgs::CompressedImage& msg) {
     return false;
   }
   msg.header.stamp = miniros::Time::now();
-  msg.header.frame_id = sensorName_;
+  msg.header.frame_id = frameId_;
   pubCompressed.publish(msg);
   publishInfo(msg.header, 0, 0);
   return true;

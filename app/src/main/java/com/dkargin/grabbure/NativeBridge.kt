@@ -15,13 +15,23 @@ object NativeBridge {
 
     @JvmStatic external fun discoveryPoll(): Array<DiscoveredMaster>
 
-    @JvmStatic external fun nodeStart(masterUri: String, ip: String, filesDir: String): String?
+    @JvmStatic external fun nodeStart(masterUri: String, ip: String, phone: String): String?
+
+    /** Start an in-process master. Null on success; the URI is then `localMasterUri()`. */
+    @JvmStatic external fun startLocalMaster(ip: String, phone: String): String?
+
+    @JvmStatic external fun localMasterUri(): String
+
+    /** One pass of `master::Master::update`. Discovery repeats only while this is called. */
+    @JvmStatic external fun masterUpdate()
 
     @JvmStatic external fun nodeStarted(): Boolean
 
     @JvmStatic external fun nodeMaster(): String
 
-    @JvmStatic external fun startPublisher(jpeg: Boolean): String?
+    @JvmStatic external fun nodeName(): String
+
+    @JvmStatic external fun startPublisher(cameraId: String, jpeg: Boolean): String?
 
     @JvmStatic external fun stopPublisher()
 
@@ -45,11 +55,16 @@ object NativeBridge {
         vPix: Int,
     ): Boolean
 
-    @JvmStatic external fun startImu(): String?
+    @JvmStatic external fun startImu(temperature: Boolean): String?
 
     @JvmStatic external fun stopImu()
 
     @JvmStatic external fun imuTopic(): String
+
+    @JvmStatic external fun temperatureTopic(): String
+
+    /** Degrees Celsius. */
+    @JvmStatic external fun publishTemperature(celsius: Double): Boolean
 
     /** Android device frame, rad/s. */
     @JvmStatic external fun publishGyro(x: Double, y: Double, z: Double): Boolean
@@ -65,4 +80,23 @@ object NativeBridge {
 
     /** Android device frame, microtesla. */
     @JvmStatic external fun publishMagneticField(x: Double, y: Double, z: Double): Boolean
+
+    @JvmStatic external fun startGps(): String?
+
+    @JvmStatic external fun stopGps()
+
+    @JvmStatic external fun gpsTopic(): String
+
+    /**
+     * WGS84 degrees and ellipsoid meters.
+     * A negative accuracy means that axis is unknown.
+     */
+    @JvmStatic external fun publishNavSat(
+        latitude: Double,
+        longitude: Double,
+        altitude: Double,
+        hasAltitude: Boolean,
+        horizontalAccuracyM: Double,
+        verticalAccuracyM: Double,
+    ): Boolean
 }

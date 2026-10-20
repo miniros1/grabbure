@@ -8,17 +8,21 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include <sys/stat.h>
 #include <vector>
 
 #include <miniros/datatypes.h>
+#include <miniros/roscore/master.h>
 #include <miniros/ros.h>
+#include <miniros/transport/rpc_manager.h>
 
 namespace {
 
 std::mutex g_nodeMu;
 std::unique_ptr<miniros::NodeHandle> g_node;
 std::string g_masterUri;
+std::string g_nodeName;
+std::unique_ptr<miniros::master::Master> g_master;
+std::string g_localUri;
 grabbure::CameraPublisher g_camera;
 
 const uint8_t* bufferData(JNIEnv* env, jobject buffer, int* available) {
@@ -71,12 +75,15 @@ bool appendPlane(std::vector<uint8_t>& out, const uint8_t* data, int available,
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_dkargin_grabbure_NativeBridge_nodeStart(JNIEnv* env, jclass, jstring masterUri, jstring ip,
-                                                  jstring filesDir) {
+                                                  jstring phone) {
   const std::string uri = grabbure::fromJava(env, masterUri);
   const std::string address = grabbure::fromJava(env, ip);
-  const std::string files = grabbure::fromJava(env, filesDir);
-  if (uri.empty() || address.empty() || files.empty()) {
-    return grabbure::toJava(env, "Master URI, phone address, and files directory are required");
+  std::string nodeName = grabbure::fromJava(env, phone);
+  if (nodeName.empty()) {
+    nodeName = "android";
+  }
+  if (uri.empty() || address.empty()) {
+    return grabbure::toJava(env, "Master URI and phone address are required");
   }
 
   std::lock_guard<std::mutex> lock(g_nodeMu);
@@ -85,28 +92,105 @@ Java_com_dkargin_grabbure_NativeBridge_nodeStart(JNIEnv* env, jclass, jstring ma
       return grabbure::toJava(env, "This process is already connected to " + g_masterUri +
                                        ". Restart the app to use another master.");
     }
+    if (g_nodeName != nodeName) {
+      return grabbure::toJava(env, "This process is already named " + g_nodeName +
+                                       ". Restart the app to use another phone name.");
+    }
     return nullptr;
   }
-
-  const std::string logDir = files + "/log";
-  mkdir(logDir.c_str(), 0755);
-  setenv("HOME", files.c_str(), 1);
-  setenv("ROS_LOG_DIR", logDir.c_str(), 1);
-  setenv("ROS_IP", address.c_str(), 1);
-  setenv("ROS_MASTER_URI", uri.c_str(), 1);
 
   miniros::M_string remaps;
   remaps["__master"] = uri;
   remaps["__ip"] = address;
   try {
-    miniros::init(remaps, "grabbure",
-                  miniros::init_options::NoSigintHandler | miniros::init_options::NoRosout);
-    g_node.reset(new miniros::NodeHandle());
+    miniros::init(remaps, nodeName,
+                  miniros::init_options::NoSigintHandler | miniros::init_options::NoRosout |
+                      miniros::init_options::NoFileLog);
+    g_node.reset(new miniros::NodeHandle(nodeName));
     g_masterUri = uri;
+    g_nodeName = nodeName;
   } catch (const std::exception& ex) {
     return grabbure::toJava(env, ex.what());
   }
   return nullptr;
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_dkargin_grabbure_NativeBridge_startLocalMaster(JNIEnv* env, jclass, jstring ip, jstring phone) {
+  const std::string address = grabbure::fromJava(env, ip);
+  std::string nodeName = grabbure::fromJava(env, phone);
+  if (nodeName.empty()) {
+    nodeName = "android";
+  }
+  if (address.empty()) {
+    return grabbure::toJava(env, "Phone address is required");
+  }
+
+  std::lock_guard<std::mutex> lock(g_nodeMu);
+  if (miniros::isInitialized()) {
+    if (g_localUri.empty()) {
+      return grabbure::toJava(env, "This process is already connected to " + g_masterUri +
+                                       ". Restart the app to start a local master.");
+    }
+    if (g_nodeName != nodeName) {
+      return grabbure::toJava(env, "This process is already named " + g_nodeName +
+                                       ". Restart the app to use another phone name.");
+    }
+    return nullptr;
+  }
+
+  constexpr int kPort = 11311;
+  auto rpc = miniros::RPCManager::instance();
+  g_master.reset(new miniros::master::Master(rpc));
+  g_master->setCacheEnabled(false);
+  g_master->setMultimasterEnabled(true);
+  g_master->setNodeCheckPeriod(5.0);
+
+  miniros::M_string remaps;
+  remaps["__rpc_server_port"] = std::to_string(kPort);
+  remaps["__local_master"] = "1";
+  remaps["__ip"] = address;
+  try {
+    miniros::init(remaps, nodeName,
+                  miniros::init_options::NoSigintHandler | miniros::init_options::NoRosout |
+                      miniros::init_options::NoFileLog);
+    if (miniros::Error err = miniros::start(); !err) {
+      return grabbure::toJava(env, std::string("Local master failed to start: ") + err.toString());
+    }
+    miniros::PollSet* pollSet = rpc->getPollSet();
+    if (!pollSet || !g_master->start(pollSet, kPort)) {
+      return grabbure::toJava(env, "Local master failed to bind");
+    }
+    g_master->registerSelfRef();
+    g_node.reset(new miniros::NodeHandle(nodeName));
+  } catch (const std::exception& ex) {
+    return grabbure::toJava(env, ex.what());
+  }
+  g_localUri = g_master->getUri();
+  if (g_localUri.empty()) {
+    return grabbure::toJava(env, "Local master started without a URI");
+  }
+  g_masterUri = g_localUri;
+  g_nodeName = nodeName;
+  return nullptr;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_dkargin_grabbure_NativeBridge_masterUpdate(JNIEnv*, jclass) {
+  miniros::master::Master* master = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(g_nodeMu);
+    master = g_master.get();
+  }
+  if (master) {
+    master->update();
+  }
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_dkargin_grabbure_NativeBridge_localMasterUri(JNIEnv* env, jclass) {
+  std::lock_guard<std::mutex> lock(g_nodeMu);
+  return grabbure::toJava(env, g_localUri);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
@@ -119,6 +203,12 @@ extern "C" JNIEXPORT jstring JNICALL
 Java_com_dkargin_grabbure_NativeBridge_nodeMaster(JNIEnv* env, jclass) {
   std::lock_guard<std::mutex> lock(g_nodeMu);
   return grabbure::toJava(env, g_masterUri);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_dkargin_grabbure_NativeBridge_nodeName(JNIEnv* env, jclass) {
+  std::lock_guard<std::mutex> lock(g_nodeMu);
+  return grabbure::toJava(env, g_nodeName);
 }
 
 namespace grabbure {
@@ -136,7 +226,8 @@ bool copyNode(miniros::NodeHandle& node, std::string& error) {
 }  // namespace grabbure
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_dkargin_grabbure_NativeBridge_startPublisher(JNIEnv* env, jclass, jboolean jpeg) {
+Java_com_dkargin_grabbure_NativeBridge_startPublisher(JNIEnv* env, jclass, jstring cameraId,
+                                                       jboolean jpeg) {
   miniros::NodeHandle node;
   {
     std::lock_guard<std::mutex> lock(g_nodeMu);
@@ -145,7 +236,11 @@ Java_com_dkargin_grabbure_NativeBridge_startPublisher(JNIEnv* env, jclass, jbool
     }
     node = *g_node;
   }
-  g_camera.start(node, jpeg == JNI_TRUE);
+  try {
+    g_camera.start(node, grabbure::fromJava(env, cameraId), jpeg == JNI_TRUE);
+  } catch (const std::exception& ex) {
+    return grabbure::toJava(env, ex.what());
+  }
   return nullptr;
 }
 

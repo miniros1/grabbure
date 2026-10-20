@@ -9,38 +9,42 @@
 
 namespace grabbure {
 
-/// Publishes one IMU as `sensor_msgs/Imu` on `<name>/data`.
-/// Samples are stored here so filtering and calibration can run before publish.
-/// Orientation is left unset. Android does not report covariances.
+/// IMU topics on a child handle `imu`: `raw`, and `temp` when a temperature sensor exists.
+/// `filtered` is advertised once a filter is publishing. Orientation is left unset.
 class ImuPublisher {
  public:
-  explicit ImuPublisher(std::string sensorName = "android_imu");
+  ImuPublisher() = default;
 
-  const std::string& sensorName() const { return sensorName_; }
-
-  void start(miniros::NodeHandle& node);
+  void start(miniros::NodeHandle& node, bool temperature);
   void stop();
 
-  /// Active topic, or empty when stopped.
+  /// Raw IMU topic, or empty when stopped.
   std::string topic() const;
 
-  /// Advertised topics. Later this includes calibrated, raw, and temperature.
+  /// Temperature topic, or empty when that publisher is not advertised.
+  std::string temperatureTopic() const;
+
+  /// Advertised topics.
   std::vector<std::string> topics() const;
 
-  /// Android device frame, rad/s. Publishes one Imu message per gyroscope sample.
+  /// Android device frame, rad/s. Publishes one raw Imu message per gyroscope sample.
   bool pushGyroscope(double x, double y, double z);
 
   /// Android device frame, m/s^2, including gravity.
   /// Held until the next gyroscope sample once a gyro sample has arrived.
   bool pushAccelerometer(double x, double y, double z);
 
+  /// Degrees Celsius. Variance is left unknown.
+  bool publishTemperature(double celsius);
+
  private:
   bool publishLocked();
 
-  std::string sensorName_;
+  std::string frameId_;
   mutable std::mutex mu_;
-  miniros::Publisher pubImu;
-  std::string topic_;
+  miniros::Publisher pubRaw;
+  miniros::Publisher pubFiltered;
+  miniros::Publisher pubTemp;
   bool hasGyro_ = false;
   bool hasAccel_ = false;
   double gx_ = 0;

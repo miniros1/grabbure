@@ -15,6 +15,11 @@
     <string name="bad_master_address">Enter the master as ip:port. The port is the ROS master port, usually 11311.</string>
     <string name="show_log">Show log</string>
     <string name="phone_address">This phone: %1$s</string>
+    <string name="phone_name_hint">Phone name, default android</string>
+    <string name="start_local_master">Start local master</string>
+    <string name="starting_local_master">Starting a master on this phone…</string>
+    <string name="restarting_connection">Restarting the app to connect to this master…</string>
+    <string name="local_master">This phone</string>
     <string name="no_wifi_address">No Wi-Fi IPv4 address. Connect to the same network as the master.</string>
     <string name="master_without_address">This master has no address yet.</string>
     <string name="with_token">token</string>
@@ -31,6 +36,8 @@
     <string name="camera_external">External</string>
     <string name="no_cameras">No camera reports JPEG or YUV output.</string>
     <string name="camera_permission_denied">Camera permission is required to publish images.</string>
+    <string name="location_permission_denied">Location permission is required to publish GPS.</string>
+    <string name="publish_gps">Publish GPS</string>
     <string name="connecting">Connecting to the master…</string>
     <string name="start">Start</string>
     <string name="stop">Stop</string>
