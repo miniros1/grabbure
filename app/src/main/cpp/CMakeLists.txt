@@ -4,16 +4,18 @@ project(grabbure CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-if(NOT MINIROS_ANDROID_PREFIX)
-  message(FATAL_ERROR "MINIROS_ANDROID_PREFIX is not set")
+if(NOT MINIROS_SOURCE_DIR)
+  message(FATAL_ERROR "MINIROS_SOURCE_DIR is not set. Set miniros.dir in local.properties.")
 endif()
-if(NOT ANDROID_ABI)
-  message(FATAL_ERROR "ANDROID_ABI is not set")
+if(NOT EXISTS "${MINIROS_SOURCE_DIR}/CMakeLists.txt")
+  message(FATAL_ERROR "MINIROS_SOURCE_DIR is not a miniros source tree: ${MINIROS_SOURCE_DIR}")
 endif()
 
-set(miniros_DIR "${MINIROS_ANDROID_PREFIX}/${ANDROID_ABI}/lib/cmake/miniros")
-find_package(Threads REQUIRED)
-find_package(miniros REQUIRED)
+# The NDK toolchain sets ANDROID. Miniros then builds static roscxx and bag_storage
+# for this ABI. Console tools, tests, and examples stay out of the app build.
+set(MINIROS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(MINIROS_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+add_subdirectory(${MINIROS_SOURCE_DIR} ${CMAKE_BINARY_DIR}/miniros EXCLUDE_FROM_ALL)
 
 add_library(grabbure SHARED
   native_bridge.cpp
@@ -25,5 +27,4 @@ add_library(grabbure SHARED
   discovery_bridge.cpp
   log_forwarder.cpp
   bag_writer.cpp)
-target_include_directories(grabbure PRIVATE ${MINIROS_GENERATED_INCLUDE_DIRS})
-target_link_libraries(grabbure PRIVATE miniros::roscxx miniros::bag_storage log)
+target_link_libraries(grabbure PRIVATE roscxx bag_storage log)

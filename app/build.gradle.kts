@@ -1,5 +1,25 @@
+import java.io.File
+import java.util.Properties
+
 plugins {
     id("com.android.application")
+}
+
+val minirosSourceDir: String = run {
+    val properties = Properties()
+    val local = rootProject.file("local.properties")
+    if (local.isFile) {
+        local.inputStream().use { properties.load(it) }
+    }
+    val raw = properties.getProperty("miniros.dir")?.trim().orEmpty()
+    if (raw.isEmpty()) {
+        throw GradleException("Set miniros.dir in local.properties to the miniros source directory")
+    }
+    val source = if (File(raw).isAbsolute) file(raw) else rootProject.file(raw)
+    if (!source.resolve("CMakeLists.txt").isFile) {
+        throw GradleException("miniros.dir is not a miniros source tree: $raw")
+    }
+    source.absolutePath
 }
 
 android {
@@ -18,17 +38,13 @@ android {
         versionCode = 1
         versionName = "0.1.0"
 
-        ndk {
-            abiFilters += "arm64-v8a"
-        }
-
         externalNativeBuild {
             cmake {
+                targets += "grabbure"
                 cppFlags += "-std=c++17"
-                val minirosPrefix = System.getProperty("user.home") + "/install-android"
                 arguments += listOf(
                     "-DANDROID_STL=c++_static",
-                    "-DMINIROS_ANDROID_PREFIX=$minirosPrefix",
+                    "-DMINIROS_SOURCE_DIR=$minirosSourceDir",
                 )
             }
         }
