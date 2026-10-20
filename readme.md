@@ -8,7 +8,7 @@ Topics, with `N` the camera id:
 - `<phone>/imu/raw` (`sensor_msgs/Imu`, gyroscope and accelerometer)
 - `<phone>/imu/temp` (`sensor_msgs/Temperature`) when the phone exposes a temperature sensor
 - `<phone>/mag/raw` (`sensor_msgs/MagneticField`)
-- `<phone>/gps` (`sensor_msgs/NavSatFix`) when Publish GPS is on, the phone has a GPS provider, and location permission is granted
+- `<phone>/gps` (`sensor_msgs/NavSatFix`) when Publish GPS is on and location permission is granted. Fixes come from GPS, network, or the fused provider, and the latest fix is repeated about once a second.
 
 `<phone>/imu/filtered` and `<phone>/mag/filtered` are the names reserved for filtered streams. They are advertised when a filter is publishing.
 

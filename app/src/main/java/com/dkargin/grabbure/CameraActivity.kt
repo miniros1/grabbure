@@ -2,13 +2,16 @@ package com.dkargin.grabbure
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.ImageFormat
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
+import android.media.Image
 import android.media.ImageReader
+import android.util.Range
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
@@ -24,10 +27,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.dkargin.grabbure.databinding.ActivityCameraBinding
+import java.nio.ByteBuffer
 import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 class CameraActivity : AppCompatActivity() {
     private lateinit var binding: ActivityCameraBinding
@@ -47,6 +52,7 @@ class CameraActivity : AppCompatActivity() {
     private var reader: ImageReader? = null
     private val publishExecutor = Executors.newSingleThreadExecutor()
     private val publishing = AtomicBoolean(false)
+    private val pendingFrame = AtomicReference<Any?>(null)
     private val frames = AtomicInteger()
     private val dropped = AtomicInteger()
     @Volatile
@@ -109,6 +115,7 @@ class CameraActivity : AppCompatActivity() {
         binding.start.setOnClickListener {
             if (running) stopCapture() else requestStart()
         }
+        loadImuRate()
         loadMagRate()
         loadGpsOption()
         loadCameras()
@@ -160,6 +167,24 @@ class CameraActivity : AppCompatActivity() {
             return
         }
         gps.listen()
+    }
+
+    private fun loadImuRate() {
+        binding.imuRate.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_dropdown_item,
+            IMU_RATES.map { getString(R.string.mag_rate_hz, it) },
+        )
+        val saved = prefs().getInt(KEY_IMU_HZ, IMU_RATES.first())
+        val index = IMU_RATES.indexOf(saved).let { if (it >= 0) it else 0 }
+        binding.imuRate.setSelection(index)
+        binding.imuRate.isEnabled = motion.hasImu
+        motion.setImuRateHz(IMU_RATES[index])
+        binding.imuRate.onItemSelectedListener = selected {
+            val hz = IMU_RATES.getOrNull(binding.imuRate.selectedItemPosition) ?: return@selected
+            prefs().edit().putInt(KEY_IMU_HZ, hz).apply()
+            motion.setImuRateHz(hz)
+        }
     }
 
     private fun loadMagRate() {
@@ -227,7 +252,7 @@ class CameraActivity : AppCompatActivity() {
             android.R.layout.simple_spinner_dropdown_item,
             sizes.map { "${it.width} x ${it.height}" },
         )
-        binding.resolution.setSelection(savedSizeIndex())
+        binding.resolution.setSelection(preferredSizeIndex())
         binding.resolution.onItemSelectedListener = selected { fitPreview(selectedSize()) }
         fitPreview(selectedSize())
         scheduleAutoStart()
@@ -245,11 +270,31 @@ class CameraActivity : AppCompatActivity() {
         return if (index >= 0) index else 0
     }
 
-    private fun savedSizeIndex(): Int {
+    private fun preferredSizeIndex(): Int {
         val width = prefs().getInt(KEY_WIDTH, -1)
         val height = prefs().getInt(KEY_HEIGHT, -1)
-        val index = sizes.indexOfFirst { it.width == width && it.height == height }
-        return if (index >= 0) index else 0
+        val saved = sizes.indexOfFirst { it.width == width && it.height == height }
+        if (saved >= 0 && sizeFps(sizes[saved]) >= 30) return saved
+        val fast = sizes.indices
+            .filter { sizeFps(sizes[it]) >= 30 }
+            .maxWithOrNull(compareBy { sizes[it].width.toLong() * sizes[it].height })
+        if (fast != null) return fast
+        return if (saved >= 0) saved else 0
+    }
+
+    /** Frames per second this size can repeat. Zero duration means the camera did not advertise a limit. */
+    private fun sizeFps(size: Size): Int {
+        val camera = cameras.getOrNull(binding.camera.selectedItemPosition) ?: return 30
+        val format = formats.getOrNull(binding.format.selectedItemPosition) ?: return 30
+        val imageFormat = if (format.jpeg) ImageFormat.JPEG else ImageFormat.YUV_420_888
+        return try {
+            val chars = getSystemService(CameraManager::class.java).getCameraCharacteristics(camera.id)
+            val minFrameNs = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+                ?.getOutputMinFrameDuration(imageFormat, size) ?: 0L
+            if (minFrameNs > 0L) (1_000_000_000L / minFrameNs).toInt() else 30
+        } catch (_: RuntimeException) {
+            30
+        }
     }
 
     private fun saveSettings(cameraId: String, jpeg: Boolean, size: Size) {
@@ -394,10 +439,11 @@ class CameraActivity : AppCompatActivity() {
         val preview = Surface(texture)
         val imageFormat = if (jpeg) android.graphics.ImageFormat.JPEG else android.graphics.ImageFormat.YUV_420_888
         reader?.close()
-        val imageReader = ImageReader.newInstance(size.width, size.height, imageFormat, 2)
+        val imageReader = ImageReader.newInstance(size.width, size.height, imageFormat, 4)
         reader = imageReader
         imageReader.setOnImageAvailableListener({ source -> onImage(source, jpeg) }, handler)
         val manager = getSystemService(CameraManager::class.java)
+        val fpsRange = targetFpsRange(manager, cameraId, imageFormat, size)
         manager.openCamera(cameraId, object : CameraDevice.StateCallback() {
             override fun onOpened(device: CameraDevice) {
                 camera = device
@@ -408,8 +454,19 @@ class CameraActivity : AppCompatActivity() {
                         val request = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
                             addTarget(preview)
                             addTarget(imageReader.surface)
+                            if (fpsRange != null) {
+                                set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, fpsRange)
+                            }
                         }.build()
-                        capture.setRepeatingRequest(request, null, handler)
+                        try {
+                            capture.setRepeatingRequest(request, null, handler)
+                        } catch (_: RuntimeException) {
+                            val fallback = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
+                                addTarget(preview)
+                                addTarget(imageReader.surface)
+                            }.build()
+                            capture.setRepeatingRequest(fallback, null, handler)
+                        }
                         runOnUiThread {
                             binding.status.text = getString(R.string.publishing)
                         }
@@ -434,43 +491,107 @@ class CameraActivity : AppCompatActivity() {
         }, handler)
     }
 
+    /**
+     * Prefer a fixed 30 fps range. Preview templates otherwise settle on the bottom of a
+     * 15–30 range. A size whose minimum frame duration is slower than 30 stays on its fastest range.
+     */
+    private fun targetFpsRange(
+        manager: CameraManager,
+        cameraId: String,
+        imageFormat: Int,
+        size: Size,
+    ): Range<Int>? {
+        val chars = manager.getCameraCharacteristics(cameraId)
+        val ranges = chars.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES) ?: return null
+        if (ranges.isEmpty()) return null
+        val minFrameNs = try {
+            chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+                ?.getOutputMinFrameDuration(imageFormat, size) ?: 0L
+        } catch (_: RuntimeException) {
+            0L
+        }
+        val hardwareMax = if (minFrameNs > 0L) (1_000_000_000L / minFrameNs).toInt() else 30
+        val goal = 30.coerceAtMost(hardwareMax.coerceAtLeast(1))
+        val capable = ranges.filter { it.lower <= goal && it.upper >= goal }
+        return capable.firstOrNull { it.lower == goal && it.upper == goal }
+            ?: capable.maxByOrNull { it.lower }
+            ?: ranges.maxByOrNull { it.upper }
+    }
+
     private fun onImage(source: ImageReader, jpeg: Boolean) {
         val image = source.acquireLatestImage() ?: return
-        if (!publishing.compareAndSet(false, true)) {
-            image.close()
+        val width = image.width
+        val height = image.height
+        val payload = try {
+            if (jpeg) {
+                val buffer = image.planes[0].buffer
+                val bytes = ByteArray(buffer.remaining())
+                buffer.get(bytes)
+                JpegFrame(bytes)
+            } else {
+                val planes = image.planes
+                YuvFrame(
+                    copyPlane(planes[0]),
+                    copyPlane(planes[1]),
+                    copyPlane(planes[2]),
+                    width,
+                    height,
+                    planes[0].rowStride,
+                    planes[1].rowStride,
+                    planes[2].rowStride,
+                    planes[0].pixelStride,
+                    planes[1].pixelStride,
+                    planes[2].pixelStride,
+                )
+            }
+        } catch (_: RuntimeException) {
             dropped.incrementAndGet()
             return
+        } finally {
+            image.close()
         }
-        publishExecutor.execute {
-            var sent = false
-            try {
-                sent = if (jpeg) {
-                    val buffer = image.planes[0].buffer
-                    val bytes = ByteArray(buffer.remaining())
-                    buffer.get(bytes)
-                    NativeBridge.publishJpeg(bytes)
-                } else {
-                    val planes = image.planes
-                    NativeBridge.publishYuv(
-                        planes[0].buffer,
-                        planes[1].buffer,
-                        planes[2].buffer,
-                        image.width,
-                        image.height,
-                        planes[0].rowStride,
-                        planes[1].rowStride,
-                        planes[2].rowStride,
-                        planes[0].pixelStride,
-                        planes[1].pixelStride,
-                        planes[2].pixelStride,
+        frames.incrementAndGet()
+        pendingFrame.set(payload)
+        if (publishing.compareAndSet(false, true)) {
+            publishExecutor.execute { drainFrames() }
+        }
+    }
+
+    private fun drainFrames() {
+        try {
+            while (true) {
+                when (val payload = pendingFrame.getAndSet(null)) {
+                    null -> return
+                    is JpegFrame -> NativeBridge.publishJpeg(payload.bytes)
+                    is YuvFrame -> NativeBridge.publishYuv(
+                        payload.y,
+                        payload.u,
+                        payload.v,
+                        payload.width,
+                        payload.height,
+                        payload.yRow,
+                        payload.uRow,
+                        payload.vRow,
+                        payload.yPix,
+                        payload.uPix,
+                        payload.vPix,
                     )
                 }
-            } finally {
-                image.close()
-                publishing.set(false)
             }
-            if (sent) frames.incrementAndGet() else dropped.incrementAndGet()
+        } finally {
+            publishing.set(false)
+            if (pendingFrame.get() != null && publishing.compareAndSet(false, true)) {
+                publishExecutor.execute { drainFrames() }
+            }
         }
+    }
+
+    private fun copyPlane(plane: Image.Plane): ByteBuffer {
+        val src = plane.buffer.duplicate()
+        val out = ByteBuffer.allocateDirect(src.remaining())
+        out.put(src)
+        out.flip()
+        return out
     }
 
     private fun startRates() {
@@ -616,6 +737,22 @@ class CameraActivity : AppCompatActivity() {
         val sizes: List<Size>,
     )
 
+    private class JpegFrame(val bytes: ByteArray)
+
+    private class YuvFrame(
+        val y: ByteBuffer,
+        val u: ByteBuffer,
+        val v: ByteBuffer,
+        val width: Int,
+        val height: Int,
+        val yRow: Int,
+        val uRow: Int,
+        val vRow: Int,
+        val yPix: Int,
+        val uPix: Int,
+        val vPix: Int,
+    )
+
     companion object {
         const val EXTRA_URI = "master_uri"
         const val EXTRA_LABEL = "master_label"
@@ -626,8 +763,10 @@ class CameraActivity : AppCompatActivity() {
         private const val KEY_JPEG = "jpeg"
         private const val KEY_WIDTH = "width"
         private const val KEY_HEIGHT = "height"
+        private const val KEY_IMU_HZ = "imu_hz"
         private const val KEY_MAG_HZ = "mag_hz"
         private const val KEY_GPS = "gps"
+        private val IMU_RATES = intArrayOf(200, 100)
         private val MAG_RATES = intArrayOf(100, 50)
     }
 }

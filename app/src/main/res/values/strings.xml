@@ -27,6 +27,7 @@
     <string name="camera_label">Camera</string>
     <string name="format_label">Format</string>
     <string name="resolution_label">Resolution</string>
+    <string name="imu_rate_label">IMU</string>
     <string name="mag_rate_label">Magnetometer</string>
     <string name="mag_rate_hz">%1$d Hz</string>
     <string name="format_jpeg">JPEG</string>

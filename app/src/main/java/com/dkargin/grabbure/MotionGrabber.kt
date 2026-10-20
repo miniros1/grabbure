@@ -21,6 +21,7 @@ class MotionGrabber(
     private val temperature = pickTemperature(sensors)
 
     private var magPeriodUs = 10_000
+    private var imuPeriodUs = 5_000
     private var thread: HandlerThread? = null
     private var handler: Handler? = null
     private var listening = false
@@ -84,8 +85,7 @@ class MotionGrabber(
         if (listening) return
         listening = true
         val callbackHandler = ensureThread()
-        gyro?.let { sensors.registerListener(listener, it, periodUs(it, IMU_PERIOD_US), callbackHandler) }
-        accel?.let { sensors.registerListener(listener, it, periodUs(it, IMU_PERIOD_US), callbackHandler) }
+        registerImu(callbackHandler)
         registerMagnetometer(callbackHandler)
         temperature?.let {
             sensors.registerListener(listener, it, SensorManager.SENSOR_DELAY_NORMAL, callbackHandler)
@@ -105,8 +105,24 @@ class MotionGrabber(
         }
     }
 
+    val hasImu: Boolean
+        get() = gyro != null || accel != null
+
     val hasMagnetometer: Boolean
         get() = magnetometer != null
+
+    /** Applies on the next sample interval. A running gyroscope and accelerometer are re-registered. */
+    fun setImuRateHz(hz: Int) {
+        if (hz <= 0) return
+        val period = 1_000_000 / hz
+        if (period == imuPeriodUs) return
+        imuPeriodUs = period
+        if (!listening) return
+        val callbackHandler = handler ?: return
+        gyro?.let { sensors.unregisterListener(listener, it) }
+        accel?.let { sensors.unregisterListener(listener, it) }
+        registerImu(callbackHandler)
+    }
 
     /** Applies on the next sample interval. A running magnetometer is re-registered. */
     fun setMagnetometerRateHz(hz: Int) {
@@ -118,6 +134,11 @@ class MotionGrabber(
         val callbackHandler = handler ?: return
         magnetometer?.let { sensors.unregisterListener(listener, it) }
         registerMagnetometer(callbackHandler)
+    }
+
+    private fun registerImu(callbackHandler: Handler) {
+        gyro?.let { sensors.registerListener(listener, it, periodUs(it, imuPeriodUs), callbackHandler) }
+        accel?.let { sensors.registerListener(listener, it, periodUs(it, imuPeriodUs), callbackHandler) }
     }
 
     private fun registerMagnetometer(callbackHandler: Handler) {
@@ -144,11 +165,6 @@ class MotionGrabber(
             blob.contains("gyro") || blob.contains("imu") || blob.contains("icm") || blob.contains("bmi")
         } ?: temps.firstOrNull { it.type == Sensor.TYPE_TEMPERATURE }
             ?: temps.firstOrNull()
-    }
-
-    companion object {
-        /** 200 Hz gyroscope and accelerometer. Microseconds between samples. */
-        private const val IMU_PERIOD_US = 5_000
     }
 
     private fun ensureThread(): Handler {
