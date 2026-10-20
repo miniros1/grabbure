@@ -1,6 +1,6 @@
 # Grabbure
 
-Android sensor publisher for miniros. The first screen lists nearby masters from UDP discovery and a phone name (default `android`). Choosing a master, or starting a master on this phone, starts the camera, IMU, and magnetometer under that name, so several phones can share one master. GPS is published when the sensor screen has that option on. Choosing a different master or phone name after the node has started restarts the app and connects to that choice.
+Android sensor publisher for miniros. The first screen lists nearby masters from UDP discovery and a phone name (default `android`). Choosing a master, or starting a master on this phone, opens the settings screen. That screen previews the camera and stores the camera, sample rate, and GPS choices. Start publishes them under the phone name, so several phones can share one master. Choosing a different master or phone name after the node has started restarts the app and connects to that choice.
 
 Topics, with `N` the camera id:
 

@@ -1,4 +1,4 @@
-package com.dkargin.grabbure
+package com.miniros1.grabbure
 
 data class DiscoveredMaster(
     val uuid: String,

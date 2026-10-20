@@ -1,4 +1,4 @@
-package com.dkargin.grabbure
+package com.miniros1.grabbure
 
 object NativeBridge {
     init {

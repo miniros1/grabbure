@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "com.dkargin.grabbure"
+    namespace = "com.miniros1.grabbure"
     compileSdk {
         version = release(37) {
             minorApiLevel = 0
@@ -12,7 +12,7 @@ android {
     ndkVersion = "28.2.13676358"
 
     defaultConfig {
-        applicationId = "com.dkargin.grabbure"
+        applicationId = "com.miniros1.grabbure"
         minSdk = 28
         targetSdk = 37
         versionCode = 1

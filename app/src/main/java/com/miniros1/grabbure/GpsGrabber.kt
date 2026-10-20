@@ -1,4 +1,4 @@
-package com.dkargin.grabbure
+package com.miniros1.grabbure
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -47,9 +47,9 @@ class GpsGrabber(context: Context) {
                         .setMinUpdateIntervalMillis(200L)
                         .setQuality(LocationRequest.QUALITY_HIGH_ACCURACY)
                         .build()
-                    locations.requestLocationUpdates(provider, request, listener, Looper.getMainLooper())
+                    locations.requestLocationUpdates(provider, request, appContext.mainExecutor, listener)
                 } else {
-                    locations.requestLocationUpdates(provider, 0L, 0f, listener, Looper.getMainLooper())
+                    locations.requestLocationUpdates(provider, 0L, 0f, listener)
                 }
                 locations.getLastKnownLocation(provider)?.let { update(it) }
             } catch (_: RuntimeException) {

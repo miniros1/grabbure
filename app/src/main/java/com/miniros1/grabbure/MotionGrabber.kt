@@ -1,4 +1,4 @@
-package com.dkargin.grabbure
+package com.miniros1.grabbure
 
 import android.content.Context
 import android.hardware.Sensor

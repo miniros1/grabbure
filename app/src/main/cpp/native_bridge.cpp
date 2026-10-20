@@ -74,7 +74,7 @@ bool appendPlane(std::vector<uint8_t>& out, const uint8_t* data, int available,
 }  // namespace
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_dkargin_grabbure_NativeBridge_nodeStart(JNIEnv* env, jclass, jstring masterUri, jstring ip,
+Java_com_miniros1_grabbure_NativeBridge_nodeStart(JNIEnv* env, jclass, jstring masterUri, jstring ip,
                                                   jstring phone) {
   const std::string uri = grabbure::fromJava(env, masterUri);
   const std::string address = grabbure::fromJava(env, ip);
@@ -116,7 +116,7 @@ Java_com_dkargin_grabbure_NativeBridge_nodeStart(JNIEnv* env, jclass, jstring ma
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_dkargin_grabbure_NativeBridge_startLocalMaster(JNIEnv* env, jclass, jstring ip, jstring phone) {
+Java_com_miniros1_grabbure_NativeBridge_startLocalMaster(JNIEnv* env, jclass, jstring ip, jstring phone) {
   const std::string address = grabbure::fromJava(env, ip);
   std::string nodeName = grabbure::fromJava(env, phone);
   if (nodeName.empty()) {
@@ -176,7 +176,7 @@ Java_com_dkargin_grabbure_NativeBridge_startLocalMaster(JNIEnv* env, jclass, jst
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_dkargin_grabbure_NativeBridge_masterUpdate(JNIEnv*, jclass) {
+Java_com_miniros1_grabbure_NativeBridge_masterUpdate(JNIEnv*, jclass) {
   miniros::master::Master* master = nullptr;
   {
     std::lock_guard<std::mutex> lock(g_nodeMu);
@@ -188,25 +188,25 @@ Java_com_dkargin_grabbure_NativeBridge_masterUpdate(JNIEnv*, jclass) {
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_dkargin_grabbure_NativeBridge_localMasterUri(JNIEnv* env, jclass) {
+Java_com_miniros1_grabbure_NativeBridge_localMasterUri(JNIEnv* env, jclass) {
   std::lock_guard<std::mutex> lock(g_nodeMu);
   return grabbure::toJava(env, g_localUri);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_dkargin_grabbure_NativeBridge_nodeStarted(JNIEnv*, jclass) {
+Java_com_miniros1_grabbure_NativeBridge_nodeStarted(JNIEnv*, jclass) {
   std::lock_guard<std::mutex> lock(g_nodeMu);
   return miniros::isInitialized() ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_dkargin_grabbure_NativeBridge_nodeMaster(JNIEnv* env, jclass) {
+Java_com_miniros1_grabbure_NativeBridge_nodeMaster(JNIEnv* env, jclass) {
   std::lock_guard<std::mutex> lock(g_nodeMu);
   return grabbure::toJava(env, g_masterUri);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_dkargin_grabbure_NativeBridge_nodeName(JNIEnv* env, jclass) {
+Java_com_miniros1_grabbure_NativeBridge_nodeName(JNIEnv* env, jclass) {
   std::lock_guard<std::mutex> lock(g_nodeMu);
   return grabbure::toJava(env, g_nodeName);
 }
@@ -226,7 +226,7 @@ bool copyNode(miniros::NodeHandle& node, std::string& error) {
 }  // namespace grabbure
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_dkargin_grabbure_NativeBridge_startPublisher(JNIEnv* env, jclass, jstring cameraId,
+Java_com_miniros1_grabbure_NativeBridge_startPublisher(JNIEnv* env, jclass, jstring cameraId,
                                                        jboolean jpeg) {
   miniros::NodeHandle node;
   {
@@ -245,17 +245,17 @@ Java_com_dkargin_grabbure_NativeBridge_startPublisher(JNIEnv* env, jclass, jstri
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_dkargin_grabbure_NativeBridge_stopPublisher(JNIEnv*, jclass) {
+Java_com_miniros1_grabbure_NativeBridge_stopPublisher(JNIEnv*, jclass) {
   g_camera.stop();
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_dkargin_grabbure_NativeBridge_currentTopic(JNIEnv* env, jclass) {
+Java_com_miniros1_grabbure_NativeBridge_currentTopic(JNIEnv* env, jclass) {
   return grabbure::toJava(env, g_camera.topic());
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
-Java_com_dkargin_grabbure_NativeBridge_publishedTopics(JNIEnv* env, jclass) {
+Java_com_miniros1_grabbure_NativeBridge_publishedTopics(JNIEnv* env, jclass) {
   std::vector<std::string> topics = g_camera.topics();
   const std::vector<std::string> motion = grabbure::motionTopics();
   topics.insert(topics.end(), motion.begin(), motion.end());
@@ -271,7 +271,7 @@ Java_com_dkargin_grabbure_NativeBridge_publishedTopics(JNIEnv* env, jclass) {
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_dkargin_grabbure_NativeBridge_publishJpeg(JNIEnv* env, jclass, jbyteArray data) {
+Java_com_miniros1_grabbure_NativeBridge_publishJpeg(JNIEnv* env, jclass, jbyteArray data) {
   if (!data) {
     return JNI_FALSE;
   }
@@ -288,7 +288,7 @@ Java_com_dkargin_grabbure_NativeBridge_publishJpeg(JNIEnv* env, jclass, jbyteArr
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_dkargin_grabbure_NativeBridge_publishYuv(JNIEnv* env, jclass, jobject yBuf, jobject uBuf,
+Java_com_miniros1_grabbure_NativeBridge_publishYuv(JNIEnv* env, jclass, jobject yBuf, jobject uBuf,
                                                    jobject vBuf, jint width, jint height, jint yRow,
                                                    jint uRow, jint vRow, jint yPix, jint uPix, jint vPix) {
   int yAvail = 0;

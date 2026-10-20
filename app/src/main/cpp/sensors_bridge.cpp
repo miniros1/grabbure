@@ -41,7 +41,7 @@ std::vector<std::string> motionTopics() {
 }  // namespace grabbure
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_dkargin_grabbure_NativeBridge_startImu(JNIEnv* env, jclass, jboolean temperature) {
+Java_com_miniros1_grabbure_NativeBridge_startImu(JNIEnv* env, jclass, jboolean temperature) {
   jstring error = nullptr;
   miniros::NodeHandle node = nodeOrNull(env, &error);
   if (error) {
@@ -56,37 +56,37 @@ Java_com_dkargin_grabbure_NativeBridge_startImu(JNIEnv* env, jclass, jboolean te
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_dkargin_grabbure_NativeBridge_stopImu(JNIEnv*, jclass) {
+Java_com_miniros1_grabbure_NativeBridge_stopImu(JNIEnv*, jclass) {
   g_imu.stop();
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_dkargin_grabbure_NativeBridge_imuTopic(JNIEnv* env, jclass) {
+Java_com_miniros1_grabbure_NativeBridge_imuTopic(JNIEnv* env, jclass) {
   return grabbure::toJava(env, g_imu.topic());
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_dkargin_grabbure_NativeBridge_temperatureTopic(JNIEnv* env, jclass) {
+Java_com_miniros1_grabbure_NativeBridge_temperatureTopic(JNIEnv* env, jclass) {
   return grabbure::toJava(env, g_imu.temperatureTopic());
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_dkargin_grabbure_NativeBridge_publishTemperature(JNIEnv*, jclass, jdouble celsius) {
+Java_com_miniros1_grabbure_NativeBridge_publishTemperature(JNIEnv*, jclass, jdouble celsius) {
   return g_imu.publishTemperature(celsius) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_dkargin_grabbure_NativeBridge_publishGyro(JNIEnv*, jclass, jdouble x, jdouble y, jdouble z) {
+Java_com_miniros1_grabbure_NativeBridge_publishGyro(JNIEnv*, jclass, jdouble x, jdouble y, jdouble z) {
   return g_imu.pushGyroscope(x, y, z) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_dkargin_grabbure_NativeBridge_publishAccel(JNIEnv*, jclass, jdouble x, jdouble y, jdouble z) {
+Java_com_miniros1_grabbure_NativeBridge_publishAccel(JNIEnv*, jclass, jdouble x, jdouble y, jdouble z) {
   return g_imu.pushAccelerometer(x, y, z) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_dkargin_grabbure_NativeBridge_startMagnetometer(JNIEnv* env, jclass) {
+Java_com_miniros1_grabbure_NativeBridge_startMagnetometer(JNIEnv* env, jclass) {
   jstring error = nullptr;
   miniros::NodeHandle node = nodeOrNull(env, &error);
   if (error) {
@@ -101,23 +101,23 @@ Java_com_dkargin_grabbure_NativeBridge_startMagnetometer(JNIEnv* env, jclass) {
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_dkargin_grabbure_NativeBridge_stopMagnetometer(JNIEnv*, jclass) {
+Java_com_miniros1_grabbure_NativeBridge_stopMagnetometer(JNIEnv*, jclass) {
   g_mag.stop();
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_dkargin_grabbure_NativeBridge_magnetometerTopic(JNIEnv* env, jclass) {
+Java_com_miniros1_grabbure_NativeBridge_magnetometerTopic(JNIEnv* env, jclass) {
   return grabbure::toJava(env, g_mag.topic());
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_dkargin_grabbure_NativeBridge_publishMagneticField(JNIEnv*, jclass, jdouble x, jdouble y,
+Java_com_miniros1_grabbure_NativeBridge_publishMagneticField(JNIEnv*, jclass, jdouble x, jdouble y,
                                                             jdouble z) {
   return g_mag.publish(x, y, z) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_dkargin_grabbure_NativeBridge_startGps(JNIEnv* env, jclass) {
+Java_com_miniros1_grabbure_NativeBridge_startGps(JNIEnv* env, jclass) {
   jstring error = nullptr;
   miniros::NodeHandle node = nodeOrNull(env, &error);
   if (error) {
@@ -132,17 +132,17 @@ Java_com_dkargin_grabbure_NativeBridge_startGps(JNIEnv* env, jclass) {
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_dkargin_grabbure_NativeBridge_stopGps(JNIEnv*, jclass) {
+Java_com_miniros1_grabbure_NativeBridge_stopGps(JNIEnv*, jclass) {
   g_gps.stop();
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_dkargin_grabbure_NativeBridge_gpsTopic(JNIEnv* env, jclass) {
+Java_com_miniros1_grabbure_NativeBridge_gpsTopic(JNIEnv* env, jclass) {
   return grabbure::toJava(env, g_gps.topic());
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_dkargin_grabbure_NativeBridge_publishNavSat(JNIEnv*, jclass, jdouble latitude, jdouble longitude,
+Java_com_miniros1_grabbure_NativeBridge_publishNavSat(JNIEnv*, jclass, jdouble latitude, jdouble longitude,
                                                      jdouble altitude, jboolean hasAltitude,
                                                      jdouble horizontalAccuracyM, jdouble verticalAccuracyM) {
   return g_gps.publish(latitude, longitude, altitude, hasAltitude == JNI_TRUE, horizontalAccuracyM,

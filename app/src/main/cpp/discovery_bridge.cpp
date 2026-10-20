@@ -17,7 +17,7 @@ std::unique_ptr<miniros::MasterDiscovery> g_discovery;
 }  // namespace
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_dkargin_grabbure_NativeBridge_discoveryStart(JNIEnv* env, jclass) {
+Java_com_miniros1_grabbure_NativeBridge_discoveryStart(JNIEnv* env, jclass) {
   grabbure::ensureAppLog();
   std::lock_guard<std::mutex> lock(g_discoveryMu);
   if (!g_discovery) {
@@ -34,7 +34,7 @@ Java_com_dkargin_grabbure_NativeBridge_discoveryStart(JNIEnv* env, jclass) {
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_dkargin_grabbure_NativeBridge_discoveryStop(JNIEnv*, jclass) {
+Java_com_miniros1_grabbure_NativeBridge_discoveryStop(JNIEnv*, jclass) {
   std::lock_guard<std::mutex> lock(g_discoveryMu);
   if (g_discovery) {
     g_discovery->stop();
@@ -42,8 +42,8 @@ Java_com_dkargin_grabbure_NativeBridge_discoveryStop(JNIEnv*, jclass) {
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
-Java_com_dkargin_grabbure_NativeBridge_discoveryPoll(JNIEnv* env, jclass) {
-  jclass cls = env->FindClass("com/dkargin/grabbure/DiscoveredMaster");
+Java_com_miniros1_grabbure_NativeBridge_discoveryPoll(JNIEnv* env, jclass) {
+  jclass cls = env->FindClass("com/miniros1/grabbure/DiscoveredMaster");
   jmethodID ctor = env->GetMethodID(
       cls, "<init>", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;Z)V");
 

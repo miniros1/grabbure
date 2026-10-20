@@ -103,11 +103,11 @@ std::string drainAppLog() {
 }  // namespace grabbure
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_dkargin_grabbure_NativeBridge_setVerbose(JNIEnv*, jclass, jboolean verbose) {
+Java_com_miniros1_grabbure_NativeBridge_setVerbose(JNIEnv*, jclass, jboolean verbose) {
   grabbure::setVerboseLogging(verbose == JNI_TRUE);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_dkargin_grabbure_NativeBridge_drainLog(JNIEnv* env, jclass) {
+Java_com_miniros1_grabbure_NativeBridge_drainLog(JNIEnv* env, jclass) {
   return grabbure::toJava(env, grabbure::drainAppLog());
 }

@@ -1,4 +1,4 @@
-package com.dkargin.grabbure
+package com.miniros1.grabbure
 
 import android.content.Intent
 import android.net.ConnectivityManager
@@ -15,7 +15,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.dkargin.grabbure.databinding.ActivityMasterBinding
+import com.miniros1.grabbure.databinding.ActivityMasterBinding
 import kotlin.system.exitProcess
 
 class MasterActivity : AppCompatActivity() {
@@ -339,11 +339,11 @@ class MasterActivity : AppCompatActivity() {
         val phone = PhoneName.save(this, binding.phoneName.text.toString())
         binding.phoneName.setText(phone)
         startActivity(
-            Intent(this, CameraActivity::class.java)
-                .putExtra(CameraActivity.EXTRA_URI, uri)
-                .putExtra(CameraActivity.EXTRA_LABEL, label)
-                .putExtra(CameraActivity.EXTRA_IP, address)
-                .putExtra(CameraActivity.EXTRA_PHONE, phone),
+            Intent(this, SettingsActivity::class.java)
+                .putExtra(Session.EXTRA_URI, uri)
+                .putExtra(Session.EXTRA_LABEL, label)
+                .putExtra(Session.EXTRA_IP, address)
+                .putExtra(Session.EXTRA_PHONE, phone),
         )
     }
 }
