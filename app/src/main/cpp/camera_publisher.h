@@ -30,8 +30,9 @@ class CameraPublisher {
   /// Advertised topics. Grows when raw, compressed, and camera info are all active.
   std::vector<std::string> topics() const;
 
-  bool publishRaw(sensor_msgs::Image& msg);
-  bool publishCompressed(sensor_msgs::CompressedImage& msg);
+  /// `bootNs` is `Image.getTimestamp`, the exposure start on `CLOCK_BOOTTIME`.
+  bool publishRaw(sensor_msgs::Image& msg, int64_t bootNs);
+  bool publishCompressed(sensor_msgs::CompressedImage& msg, int64_t bootNs);
 
  private:
   /// Same header as the image. No-op until `pubInfo` is advertised.

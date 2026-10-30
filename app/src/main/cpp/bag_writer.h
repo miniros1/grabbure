@@ -25,13 +25,13 @@ class BagWriter {
   std::string gpsTopic() const;
   std::vector<std::string> topics() const;
 
-  bool writeJpeg(const uint8_t* data, int size);
-  bool pushGyroscope(double x, double y, double z);
-  bool pushAccelerometer(double x, double y, double z);
-  bool writeTemperature(double celsius);
-  bool writeMagneticField(double xUt, double yUt, double zUt);
+  bool writeJpeg(const uint8_t* data, int size, int64_t bootNs);
+  bool pushGyroscope(double x, double y, double z, int64_t bootNs);
+  bool pushAccelerometer(double x, double y, double z, int64_t bootNs);
+  bool writeTemperature(double celsius, int64_t bootNs);
+  bool writeMagneticField(double xUt, double yUt, double zUt, int64_t bootNs);
   bool writeNavSat(double latitudeDeg, double longitudeDeg, double altitudeM, bool hasAltitude,
-                   double horizontalAccuracyM, double verticalAccuracyM);
+                   double horizontalAccuracyM, double verticalAccuracyM, int64_t bootNs);
 
  private:
   struct State {
@@ -53,6 +53,7 @@ class BagWriter {
     double ax = 0;
     double ay = 0;
     double az = 0;
+    int64_t stampBootNs = 0;
   };
 
   bool writeImuLocked();

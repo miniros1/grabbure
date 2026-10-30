@@ -7,8 +7,6 @@ object NativeBridge {
 
     @JvmStatic external fun setVerbose(verbose: Boolean)
 
-    @JvmStatic external fun drainLog(): String
-
     @JvmStatic external fun discoveryStart(): String?
 
     @JvmStatic external fun discoveryStop()
@@ -55,8 +53,10 @@ object NativeBridge {
 
     @JvmStatic external fun publishedTopics(): Array<String>
 
-    @JvmStatic external fun publishJpeg(data: ByteArray): Boolean
+    /** `timestampNs` is `Image.timestamp`, the exposure start. */
+    @JvmStatic external fun publishJpeg(data: ByteArray, timestampNs: Long): Boolean
 
+    /** `timestampNs` is `Image.timestamp`, the exposure start. */
     @JvmStatic external fun publishYuv(
         y: java.nio.ByteBuffer,
         u: java.nio.ByteBuffer,
@@ -69,6 +69,7 @@ object NativeBridge {
         yPix: Int,
         uPix: Int,
         vPix: Int,
+        timestampNs: Long,
     ): Boolean
 
     @JvmStatic external fun startImu(temperature: Boolean): String?
@@ -79,14 +80,14 @@ object NativeBridge {
 
     @JvmStatic external fun temperatureTopic(): String
 
-    /** Degrees Celsius. */
-    @JvmStatic external fun publishTemperature(celsius: Double): Boolean
+    /** Degrees Celsius. `timestampNs` is `SensorEvent.timestamp`. */
+    @JvmStatic external fun publishTemperature(celsius: Double, timestampNs: Long): Boolean
 
-    /** Android device frame, rad/s. */
-    @JvmStatic external fun publishGyro(x: Double, y: Double, z: Double): Boolean
+    /** Android device frame, rad/s. `timestampNs` is `SensorEvent.timestamp`. */
+    @JvmStatic external fun publishGyro(x: Double, y: Double, z: Double, timestampNs: Long): Boolean
 
-    /** Android device frame, m/s^2, including gravity. */
-    @JvmStatic external fun publishAccel(x: Double, y: Double, z: Double): Boolean
+    /** Android device frame, m/s^2, including gravity. `timestampNs` is `SensorEvent.timestamp`. */
+    @JvmStatic external fun publishAccel(x: Double, y: Double, z: Double, timestampNs: Long): Boolean
 
     @JvmStatic external fun startMagnetometer(): String?
 
@@ -94,8 +95,8 @@ object NativeBridge {
 
     @JvmStatic external fun magnetometerTopic(): String
 
-    /** Android device frame, microtesla. */
-    @JvmStatic external fun publishMagneticField(x: Double, y: Double, z: Double): Boolean
+    /** Android device frame, microtesla. `timestampNs` is `SensorEvent.timestamp`. */
+    @JvmStatic external fun publishMagneticField(x: Double, y: Double, z: Double, timestampNs: Long): Boolean
 
     @JvmStatic external fun startGps(): String?
 
@@ -106,6 +107,7 @@ object NativeBridge {
     /**
      * WGS84 degrees and ellipsoid meters.
      * A negative accuracy means that axis is unknown.
+     * `timestampNs` is `Location.elapsedRealtimeNanos`.
      */
     @JvmStatic external fun publishNavSat(
         latitude: Double,
@@ -114,5 +116,6 @@ object NativeBridge {
         hasAltitude: Boolean,
         horizontalAccuracyM: Double,
         verticalAccuracyM: Double,
+        timestampNs: Long,
     ): Boolean
 }

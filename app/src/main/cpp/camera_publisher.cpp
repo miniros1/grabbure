@@ -1,6 +1,7 @@
 #include "camera_publisher.h"
 
 #include "node_session.h"
+#include "sensor_time.h"
 
 #include <sensor_msgs/CameraInfo.hxx>
 
@@ -52,24 +53,24 @@ std::vector<std::string> CameraPublisher::topics() const {
   return out;
 }
 
-bool CameraPublisher::publishRaw(sensor_msgs::Image& msg) {
+bool CameraPublisher::publishRaw(sensor_msgs::Image& msg, int64_t bootNs) {
   std::lock_guard<std::mutex> lock(mu_);
   if (!pubRaw) {
     return false;
   }
-  msg.header.stamp = miniros::Time::now();
+  msg.header.stamp = timeFromBootNanos(bootNs);
   msg.header.frame_id = frameId_;
   pubRaw.publish(msg);
   publishInfo(msg.header, msg.width, msg.height);
   return true;
 }
 
-bool CameraPublisher::publishCompressed(sensor_msgs::CompressedImage& msg) {
+bool CameraPublisher::publishCompressed(sensor_msgs::CompressedImage& msg, int64_t bootNs) {
   std::lock_guard<std::mutex> lock(mu_);
   if (!pubCompressed) {
     return false;
   }
-  msg.header.stamp = miniros::Time::now();
+  msg.header.stamp = timeFromBootNanos(bootNs);
   msg.header.frame_id = frameId_;
   pubCompressed.publish(msg);
   publishInfo(msg.header, 0, 0);

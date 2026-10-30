@@ -1,6 +1,7 @@
 #include "magnetometer_publisher.h"
 
 #include "node_session.h"
+#include "sensor_time.h"
 
 #include <sensor_msgs/MagneticField.hxx>
 
@@ -43,7 +44,7 @@ std::vector<std::string> MagnetometerPublisher::topics() const {
   return out;
 }
 
-bool MagnetometerPublisher::publish(double xUt, double yUt, double zUt) {
+bool MagnetometerPublisher::publish(double xUt, double yUt, double zUt, int64_t bootNs) {
   std::lock_guard<std::mutex> lock(mu_);
   if (!pubRaw) {
     return false;
@@ -52,7 +53,7 @@ bool MagnetometerPublisher::publish(double xUt, double yUt, double zUt) {
   yUt_ = yUt;
   zUt_ = zUt;
   sensor_msgs::MagneticField msg;
-  msg.header.stamp = miniros::Time::now();
+  msg.header.stamp = timeFromBootNanos(bootNs);
   msg.header.frame_id = frameId_;
   msg.magnetic_field.x = xUt_ * kMicroteslaToTesla;
   msg.magnetic_field.y = yUt_ * kMicroteslaToTesla;

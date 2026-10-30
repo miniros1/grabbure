@@ -15,16 +15,5 @@ object AppLog {
         }
     }
 
-    fun appendNative(block: String) {
-        if (block.isBlank()) return
-        synchronized(lines) {
-            for (raw in block.split('\n')) {
-                val line = raw.trimEnd()
-                if (line.isNotEmpty()) lines.addLast(line)
-            }
-            while (lines.size > 200) lines.removeFirst()
-        }
-    }
-
     fun text(): String = synchronized(lines) { lines.joinToString("\n") }
 }

@@ -1,6 +1,7 @@
 #include "imu_publisher.h"
 
 #include "node_session.h"
+#include "sensor_time.h"
 
 #include <array>
 
@@ -63,16 +64,17 @@ std::vector<std::string> ImuPublisher::topics() const {
   return out;
 }
 
-bool ImuPublisher::pushGyroscope(double x, double y, double z) {
+bool ImuPublisher::pushGyroscope(double x, double y, double z, int64_t bootNs) {
   std::lock_guard<std::mutex> lock(mu_);
   gx_ = x;
   gy_ = y;
   gz_ = z;
+  stampBootNs_ = bootNs;
   hasGyro_ = true;
   return publishLocked();
 }
 
-bool ImuPublisher::pushAccelerometer(double x, double y, double z) {
+bool ImuPublisher::pushAccelerometer(double x, double y, double z, int64_t bootNs) {
   std::lock_guard<std::mutex> lock(mu_);
   ax_ = x;
   ay_ = y;
@@ -81,16 +83,17 @@ bool ImuPublisher::pushAccelerometer(double x, double y, double z) {
   if (hasGyro_) {
     return true;
   }
+  stampBootNs_ = bootNs;
   return publishLocked();
 }
 
-bool ImuPublisher::publishTemperature(double celsius) {
+bool ImuPublisher::publishTemperature(double celsius, int64_t bootNs) {
   std::lock_guard<std::mutex> lock(mu_);
   if (!pubTemp) {
     return false;
   }
   sensor_msgs::Temperature msg;
-  msg.header.stamp = miniros::Time::now();
+  msg.header.stamp = timeFromBootNanos(bootNs);
   msg.header.frame_id = frameId_;
   msg.temperature = celsius;
   msg.variance = 0.0;
@@ -103,7 +106,7 @@ bool ImuPublisher::publishLocked() {
     return false;
   }
   sensor_msgs::Imu msg;
-  msg.header.stamp = miniros::Time::now();
+  msg.header.stamp = timeFromBootNanos(stampBootNs_);
   msg.header.frame_id = frameId_;
   // No orientation estimate. A zero quaternion would look like identity.
   markAbsent(msg.orientation_covariance);

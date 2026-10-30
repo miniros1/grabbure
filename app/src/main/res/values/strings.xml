@@ -23,6 +23,7 @@
     <string name="record_bag">Record to bag</string>
     <string name="bag_folder">Storage</string>
     <string name="bag_folder_line">Bags: %1$s</string>
+    <string name="bag_saved">Saved %1$s</string>
     <string name="bag_folder_unavailable">That folder cannot be written as a normal path. Choose a folder on internal storage.</string>
     <string name="bag_needs_jpeg">Bag recording needs a JPEG size. This camera does not list one.</string>
     <string name="recording">Recording</string>

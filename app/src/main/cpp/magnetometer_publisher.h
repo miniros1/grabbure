@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -24,8 +25,8 @@ class MagnetometerPublisher {
   /// Advertised topics.
   std::vector<std::string> topics() const;
 
-  /// Android device frame, microtesla.
-  bool publish(double xUt, double yUt, double zUt);
+  /// Android device frame, microtesla. `bootNs` is `SensorEvent.timestamp`.
+  bool publish(double xUt, double yUt, double zUt, int64_t bootNs);
 
  private:
   std::string frameId_;

@@ -44,6 +44,7 @@ class CameraActivity : AppCompatActivity() {
     private lateinit var phoneName: String
     private var bagMode = false
     private var bagDir = ""
+    private var recordingBag: File? = null
 
     private var captureId: String? = null
     private var captureJpeg = true
@@ -186,7 +187,9 @@ class CameraActivity : AppCompatActivity() {
         val recordBag = bagMode
         val bagFile = if (recordBag) {
             val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-            File(bagDir, "grabbure_$stamp.bag").absolutePath
+            val file = File(bagDir, "grabbure_$stamp.bag")
+            recordingBag = file
+            file.absolutePath
         } else {
             ""
         }
@@ -224,9 +227,9 @@ class CameraActivity : AppCompatActivity() {
                     gps.stop()
                     try {
                         NativeBridge.stopPublisher()
-                        NativeBridge.stopBag()
                     } catch (_: UnsatisfiedLinkError) {
                     }
+                    closeBag()
                     binding.start.setText(R.string.start)
                     if (error != null) {
                         binding.status.text = error
@@ -314,12 +317,13 @@ class CameraActivity : AppCompatActivity() {
         val image = source.acquireLatestImage() ?: return
         val width = image.width
         val height = image.height
+        val timestampNs = image.timestamp
         val payload = try {
             if (jpeg) {
                 val buffer = image.planes[0].buffer
                 val bytes = ByteArray(buffer.remaining())
                 buffer.get(bytes)
-                JpegFrame(bytes)
+                JpegFrame(bytes, timestampNs)
             } else {
                 val planes = image.planes
                 YuvFrame(
@@ -334,6 +338,7 @@ class CameraActivity : AppCompatActivity() {
                     planes[0].pixelStride,
                     planes[1].pixelStride,
                     planes[2].pixelStride,
+                    timestampNs,
                 )
             }
         } catch (_: RuntimeException) {
@@ -354,7 +359,7 @@ class CameraActivity : AppCompatActivity() {
             while (true) {
                 when (val payload = pendingFrame.getAndSet(null)) {
                     null -> return
-                    is JpegFrame -> NativeBridge.publishJpeg(payload.bytes)
+                    is JpegFrame -> NativeBridge.publishJpeg(payload.bytes, payload.timestampNs)
                     is YuvFrame -> NativeBridge.publishYuv(
                         payload.y,
                         payload.u,
@@ -367,6 +372,7 @@ class CameraActivity : AppCompatActivity() {
                         payload.yPix,
                         payload.uPix,
                         payload.vPix,
+                        payload.timestampNs,
                     )
                 }
             }
@@ -464,10 +470,29 @@ class CameraActivity : AppCompatActivity() {
         if (::gps.isInitialized) gps.stop()
         try {
             NativeBridge.stopPublisher()
+        } catch (_: UnsatisfiedLinkError) {
+        }
+        closeBag()
+        if (::binding.isInitialized) binding.start.setText(R.string.start)
+    }
+
+    /** Close the bag, then rename it into Movies when that folder can take the file. */
+    private fun closeBag() {
+        val finished = recordingBag
+        recordingBag = null
+        try {
             NativeBridge.stopBag()
         } catch (_: UnsatisfiedLinkError) {
         }
-        if (::binding.isInitialized) binding.start.setText(R.string.start)
+        if (finished == null || !finished.isFile) return
+        Thread {
+            val published = BagFolder.publish(applicationContext, finished)
+            runOnUiThread {
+                if (::binding.isInitialized) {
+                    binding.status.text = getString(R.string.bag_saved, published.absolutePath)
+                }
+            }
+        }.start()
     }
 
     private fun ensureCameraThread(): Handler {
@@ -499,7 +524,7 @@ class CameraActivity : AppCompatActivity() {
         override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
     }
 
-    private class JpegFrame(val bytes: ByteArray)
+    private class JpegFrame(val bytes: ByteArray, val timestampNs: Long)
 
     private class YuvFrame(
         val y: ByteBuffer,
@@ -513,5 +538,6 @@ class CameraActivity : AppCompatActivity() {
         val yPix: Int,
         val uPix: Int,
         val vPix: Int,
+        val timestampNs: Long,
     )
 }

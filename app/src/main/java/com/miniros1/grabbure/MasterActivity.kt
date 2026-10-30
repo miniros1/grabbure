@@ -1,6 +1,9 @@
 package com.miniros1.grabbure
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
@@ -14,6 +17,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.miniros1.grabbure.databinding.ActivityMasterBinding
@@ -28,6 +32,7 @@ class MasterActivity : AppCompatActivity() {
     private val handler = Handler(Looper.getMainLooper())
     private var keepNetwork = false
     private var openedPending = false
+    private val storagePermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     private val pickBagFolder = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri == null) return@registerForActivityResult
         try {
@@ -239,10 +244,6 @@ class MasterActivity : AppCompatActivity() {
 
     private fun flushLog() {
         if (!binding.showLog.isChecked) return
-        try {
-            AppLog.appendNative(NativeBridge.drainLog())
-        } catch (_: UnsatisfiedLinkError) {
-        }
         val text = AppLog.text()
         if (binding.logView.text.toString() != text) {
             binding.logView.text = text
@@ -356,12 +357,18 @@ class MasterActivity : AppCompatActivity() {
     }
 
     private fun showBagFolder() {
-        binding.bagFolder.text = getString(R.string.bag_folder_line, BagFolder.directory(this).absolutePath)
+        binding.bagFolder.text = getString(R.string.bag_folder_line, BagFolder.publishedDirectory(this).absolutePath)
     }
 
     private fun openBag() {
         val phone = PhoneName.save(this, binding.phoneName.text.toString())
         binding.phoneName.setText(phone)
+        if (Build.VERSION.SDK_INT <= 29 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            storagePermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
         val folder = BagFolder.directory(this)
         if (!folder.isDirectory || !folder.canWrite()) {
             Toast.makeText(this, R.string.bag_folder_unavailable, Toast.LENGTH_LONG).show()

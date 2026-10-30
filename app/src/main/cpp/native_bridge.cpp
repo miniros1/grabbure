@@ -297,7 +297,7 @@ Java_com_miniros1_grabbure_NativeBridge_publishedTopics(JNIEnv* env, jclass) {
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_miniros1_grabbure_NativeBridge_publishJpeg(JNIEnv* env, jclass, jbyteArray data) {
+Java_com_miniros1_grabbure_NativeBridge_publishJpeg(JNIEnv* env, jclass, jbyteArray data, jlong timestampNs) {
   if (!data) {
     return JNI_FALSE;
   }
@@ -311,16 +311,18 @@ Java_com_miniros1_grabbure_NativeBridge_publishJpeg(JNIEnv* env, jclass, jbyteAr
   msg.data.assign(reinterpret_cast<uint8_t*>(bytes), reinterpret_cast<uint8_t*>(bytes) + size);
   env->ReleaseByteArrayElements(data, bytes, JNI_ABORT);
   if (grabbure::bagWriter().isOpen()) {
-    return grabbure::bagWriter().writeJpeg(msg.data.data(), static_cast<int>(msg.data.size())) ? JNI_TRUE
-                                                                                                : JNI_FALSE;
+    return grabbure::bagWriter().writeJpeg(msg.data.data(), static_cast<int>(msg.data.size()), timestampNs)
+               ? JNI_TRUE
+               : JNI_FALSE;
   }
-  return g_camera.publishCompressed(msg) ? JNI_TRUE : JNI_FALSE;
+  return g_camera.publishCompressed(msg, timestampNs) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_miniros1_grabbure_NativeBridge_publishYuv(JNIEnv* env, jclass, jobject yBuf, jobject uBuf,
                                                    jobject vBuf, jint width, jint height, jint yRow,
-                                                   jint uRow, jint vRow, jint yPix, jint uPix, jint vPix) {
+                                                   jint uRow, jint vRow, jint yPix, jint uPix, jint vPix,
+                                                   jlong timestampNs) {
   int yAvail = 0;
   int uAvail = 0;
   int vAvail = 0;
@@ -344,5 +346,5 @@ Java_com_miniros1_grabbure_NativeBridge_publishYuv(JNIEnv* env, jclass, jobject 
       !appendPlane(msg.data, v, vAvail, vRow, vPix, chromaWidth, chromaHeight)) {
     return JNI_FALSE;
   }
-  return g_camera.publishRaw(msg) ? JNI_TRUE : JNI_FALSE;
+  return g_camera.publishRaw(msg, timestampNs) ? JNI_TRUE : JNI_FALSE;
 }

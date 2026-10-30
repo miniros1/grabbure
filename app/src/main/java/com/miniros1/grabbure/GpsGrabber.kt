@@ -112,6 +112,7 @@ class GpsGrabber(context: Context) {
             location.hasAltitude(),
             horizontal,
             vertical,
+            location.elapsedRealtimeNanos,
         )
         if (sent) {
             lastPublishMs = SystemClock.elapsedRealtime()

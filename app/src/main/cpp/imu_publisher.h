@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -28,14 +29,15 @@ class ImuPublisher {
   std::vector<std::string> topics() const;
 
   /// Android device frame, rad/s. Publishes one raw Imu message per gyroscope sample.
-  bool pushGyroscope(double x, double y, double z);
+  /// `bootNs` is `SensorEvent.timestamp`.
+  bool pushGyroscope(double x, double y, double z, int64_t bootNs);
 
   /// Android device frame, m/s^2, including gravity.
   /// Held until the next gyroscope sample once a gyro sample has arrived.
-  bool pushAccelerometer(double x, double y, double z);
+  bool pushAccelerometer(double x, double y, double z, int64_t bootNs);
 
-  /// Degrees Celsius. Variance is left unknown.
-  bool publishTemperature(double celsius);
+  /// Degrees Celsius. Variance is left unknown. `bootNs` is `SensorEvent.timestamp`.
+  bool publishTemperature(double celsius, int64_t bootNs);
 
  private:
   bool publishLocked();
@@ -53,6 +55,7 @@ class ImuPublisher {
   double ax_ = 0;
   double ay_ = 0;
   double az_ = 0;
+  int64_t stampBootNs_ = 0;
 };
 
 }  // namespace grabbure

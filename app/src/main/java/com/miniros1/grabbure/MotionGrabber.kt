@@ -41,7 +41,7 @@ class MotionGrabber(
             val sensor = temperature
             if (sensor != null && event.sensor.type == sensor.type) {
                 if (event.values.isNotEmpty() &&
-                    NativeBridge.publishTemperature(event.values[0].toDouble())
+                    NativeBridge.publishTemperature(event.values[0].toDouble(), event.timestamp)
                 ) {
                     tempPublished.incrementAndGet()
                 }
@@ -53,13 +53,13 @@ class MotionGrabber(
             val z = event.values[2].toDouble()
             when (event.sensor.type) {
                 Sensor.TYPE_GYROSCOPE -> {
-                    if (NativeBridge.publishGyro(x, y, z)) imuPublished.incrementAndGet()
+                    if (NativeBridge.publishGyro(x, y, z, event.timestamp)) imuPublished.incrementAndGet()
                 }
                 Sensor.TYPE_ACCELEROMETER -> {
-                    if (NativeBridge.publishAccel(x, y, z)) imuPublished.incrementAndGet()
+                    if (NativeBridge.publishAccel(x, y, z, event.timestamp)) imuPublished.incrementAndGet()
                 }
                 magnetometer?.type -> {
-                    if (NativeBridge.publishMagneticField(x, y, z)) magPublished.incrementAndGet()
+                    if (NativeBridge.publishMagneticField(x, y, z, event.timestamp)) magPublished.incrementAndGet()
                 }
             }
         }

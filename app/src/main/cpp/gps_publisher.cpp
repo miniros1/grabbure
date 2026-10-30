@@ -1,6 +1,7 @@
 #include "gps_publisher.h"
 
 #include "node_session.h"
+#include "sensor_time.h"
 
 #include <sensor_msgs/NavSatFix.hxx>
 
@@ -37,13 +38,13 @@ std::vector<std::string> GpsPublisher::topics() const {
 }
 
 bool GpsPublisher::publish(double latitudeDeg, double longitudeDeg, double altitudeM, bool hasAltitude,
-                           double horizontalAccuracyM, double verticalAccuracyM) {
+                           double horizontalAccuracyM, double verticalAccuracyM, int64_t bootNs) {
   std::lock_guard<std::mutex> lock(mu_);
   if (!pub) {
     return false;
   }
   sensor_msgs::NavSatFix msg;
-  msg.header.stamp = miniros::Time::now();
+  msg.header.stamp = timeFromBootNanos(bootNs);
   msg.header.frame_id = frameId_;
   msg.status.status = sensor_msgs::NavSatStatus::STATUS_FIX;
   msg.status.service = sensor_msgs::NavSatStatus::SERVICE_GPS;

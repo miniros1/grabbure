@@ -11,7 +11,7 @@ Grabbure publishes following topics:
 - `<phone_name>/mag/raw` (`sensor_msgs/MagneticField`)
 - `<phone_name>/gps` (`sensor_msgs/NavSatFix`) when Publish GPS is on and location permission is granted.
 
-Grabbure can connect either to external ROS1/miniros master or host own master, so external clients can connect. It also provides an option to store all data streams directly to ROS BAG file. 
+Grabbure can connect either to external ROS1/miniros master or host own master, so external clients can connect. It also provides an option to store all data streams directly to a ROS bag. Bags are stored in `Movies/grabbure` on internal storage, next to other recordings, and that folder shows up in USB file transfer. When Android will not let the app create the file there directly, it is written under `Android/media/com.miniros1.grabbure/bags` and renamed into `Movies/grabbure` when recording stops. A folder chosen with Storage is left where it was written. 
 
 ## Build
 

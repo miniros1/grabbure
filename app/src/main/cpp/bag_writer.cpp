@@ -1,5 +1,7 @@
 #include "bag_writer.h"
 
+#include "sensor_time.h"
+
 #include <array>
 
 #include <minibag/bag.h>
@@ -137,13 +139,13 @@ std::vector<std::string> BagWriter::topics() const {
   return out;
 }
 
-bool BagWriter::writeJpeg(const uint8_t* data, int size) {
+bool BagWriter::writeJpeg(const uint8_t* data, int size, int64_t bootNs) {
   std::lock_guard<std::mutex> lock(mu_);
   if (!state_.open || state_.cameraTopic.empty() || !data || size <= 0) {
     return false;
   }
   sensor_msgs::CompressedImage msg;
-  msg.header.stamp = miniros::Time::now();
+  msg.header.stamp = timeFromBootNanos(bootNs);
   msg.header.frame_id = state_.cameraFrame;
   msg.format = "jpeg";
   msg.data.assign(data, data + size);
@@ -155,7 +157,7 @@ bool BagWriter::writeJpeg(const uint8_t* data, int size) {
   return true;
 }
 
-bool BagWriter::pushGyroscope(double x, double y, double z) {
+bool BagWriter::pushGyroscope(double x, double y, double z, int64_t bootNs) {
   std::lock_guard<std::mutex> lock(mu_);
   if (!state_.open || state_.imuTopic.empty()) {
     return false;
@@ -163,11 +165,12 @@ bool BagWriter::pushGyroscope(double x, double y, double z) {
   state_.gx = x;
   state_.gy = y;
   state_.gz = z;
+  state_.stampBootNs = bootNs;
   state_.hasGyro = true;
   return writeImuLocked();
 }
 
-bool BagWriter::pushAccelerometer(double x, double y, double z) {
+bool BagWriter::pushAccelerometer(double x, double y, double z, int64_t bootNs) {
   std::lock_guard<std::mutex> lock(mu_);
   if (!state_.open || state_.imuTopic.empty()) {
     return false;
@@ -179,12 +182,13 @@ bool BagWriter::pushAccelerometer(double x, double y, double z) {
   if (state_.hasGyro) {
     return true;
   }
+  state_.stampBootNs = bootNs;
   return writeImuLocked();
 }
 
 bool BagWriter::writeImuLocked() {
   sensor_msgs::Imu msg;
-  msg.header.stamp = miniros::Time::now();
+  msg.header.stamp = timeFromBootNanos(state_.stampBootNs);
   msg.header.frame_id = state_.imuFrame;
   markAbsent(msg.orientation_covariance);
   if (state_.hasGyro) {
@@ -209,13 +213,13 @@ bool BagWriter::writeImuLocked() {
   return true;
 }
 
-bool BagWriter::writeTemperature(double celsius) {
+bool BagWriter::writeTemperature(double celsius, int64_t bootNs) {
   std::lock_guard<std::mutex> lock(mu_);
   if (!state_.open || state_.temperatureTopic.empty()) {
     return false;
   }
   sensor_msgs::Temperature msg;
-  msg.header.stamp = miniros::Time::now();
+  msg.header.stamp = timeFromBootNanos(bootNs);
   msg.header.frame_id = state_.imuFrame;
   msg.temperature = celsius;
   msg.variance = 0.0;
@@ -227,13 +231,13 @@ bool BagWriter::writeTemperature(double celsius) {
   return true;
 }
 
-bool BagWriter::writeMagneticField(double xUt, double yUt, double zUt) {
+bool BagWriter::writeMagneticField(double xUt, double yUt, double zUt, int64_t bootNs) {
   std::lock_guard<std::mutex> lock(mu_);
   if (!state_.open || state_.magnetometerTopic.empty()) {
     return false;
   }
   sensor_msgs::MagneticField msg;
-  msg.header.stamp = miniros::Time::now();
+  msg.header.stamp = timeFromBootNanos(bootNs);
   msg.header.frame_id = state_.magnetometerFrame;
   msg.magnetic_field.x = xUt * 1e-6;
   msg.magnetic_field.y = yUt * 1e-6;
@@ -247,13 +251,13 @@ bool BagWriter::writeMagneticField(double xUt, double yUt, double zUt) {
 }
 
 bool BagWriter::writeNavSat(double latitudeDeg, double longitudeDeg, double altitudeM, bool hasAltitude,
-                            double horizontalAccuracyM, double verticalAccuracyM) {
+                            double horizontalAccuracyM, double verticalAccuracyM, int64_t bootNs) {
   std::lock_guard<std::mutex> lock(mu_);
   if (!state_.open || state_.gpsTopic.empty()) {
     return false;
   }
   sensor_msgs::NavSatFix msg;
-  msg.header.stamp = miniros::Time::now();
+  msg.header.stamp = timeFromBootNanos(bootNs);
   msg.header.frame_id = state_.gpsFrame;
   msg.status.status = sensor_msgs::NavSatStatus::STATUS_FIX;
   msg.status.service = sensor_msgs::NavSatStatus::SERVICE_GPS;

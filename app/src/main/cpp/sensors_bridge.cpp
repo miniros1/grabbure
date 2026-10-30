@@ -74,27 +74,29 @@ Java_com_miniros1_grabbure_NativeBridge_temperatureTopic(JNIEnv* env, jclass) {
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_miniros1_grabbure_NativeBridge_publishTemperature(JNIEnv*, jclass, jdouble celsius) {
+Java_com_miniros1_grabbure_NativeBridge_publishTemperature(JNIEnv*, jclass, jdouble celsius, jlong timestampNs) {
   if (grabbure::bagWriter().isOpen()) {
-    return grabbure::bagWriter().writeTemperature(celsius) ? JNI_TRUE : JNI_FALSE;
+    return grabbure::bagWriter().writeTemperature(celsius, timestampNs) ? JNI_TRUE : JNI_FALSE;
   }
-  return g_imu.publishTemperature(celsius) ? JNI_TRUE : JNI_FALSE;
+  return g_imu.publishTemperature(celsius, timestampNs) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_miniros1_grabbure_NativeBridge_publishGyro(JNIEnv*, jclass, jdouble x, jdouble y, jdouble z) {
+Java_com_miniros1_grabbure_NativeBridge_publishGyro(JNIEnv*, jclass, jdouble x, jdouble y, jdouble z,
+                                                     jlong timestampNs) {
   if (grabbure::bagWriter().isOpen()) {
-    return grabbure::bagWriter().pushGyroscope(x, y, z) ? JNI_TRUE : JNI_FALSE;
+    return grabbure::bagWriter().pushGyroscope(x, y, z, timestampNs) ? JNI_TRUE : JNI_FALSE;
   }
-  return g_imu.pushGyroscope(x, y, z) ? JNI_TRUE : JNI_FALSE;
+  return g_imu.pushGyroscope(x, y, z, timestampNs) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_miniros1_grabbure_NativeBridge_publishAccel(JNIEnv*, jclass, jdouble x, jdouble y, jdouble z) {
+Java_com_miniros1_grabbure_NativeBridge_publishAccel(JNIEnv*, jclass, jdouble x, jdouble y, jdouble z,
+                                                      jlong timestampNs) {
   if (grabbure::bagWriter().isOpen()) {
-    return grabbure::bagWriter().pushAccelerometer(x, y, z) ? JNI_TRUE : JNI_FALSE;
+    return grabbure::bagWriter().pushAccelerometer(x, y, z, timestampNs) ? JNI_TRUE : JNI_FALSE;
   }
-  return g_imu.pushAccelerometer(x, y, z) ? JNI_TRUE : JNI_FALSE;
+  return g_imu.pushAccelerometer(x, y, z, timestampNs) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -124,12 +126,12 @@ Java_com_miniros1_grabbure_NativeBridge_magnetometerTopic(JNIEnv* env, jclass) {
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_miniros1_grabbure_NativeBridge_publishMagneticField(JNIEnv*, jclass, jdouble x, jdouble y,
-                                                            jdouble z) {
+Java_com_miniros1_grabbure_NativeBridge_publishMagneticField(JNIEnv*, jclass, jdouble x, jdouble y, jdouble z,
+                                                            jlong timestampNs) {
   if (grabbure::bagWriter().isOpen()) {
-    return grabbure::bagWriter().writeMagneticField(x, y, z) ? JNI_TRUE : JNI_FALSE;
+    return grabbure::bagWriter().writeMagneticField(x, y, z, timestampNs) ? JNI_TRUE : JNI_FALSE;
   }
-  return g_mag.publish(x, y, z) ? JNI_TRUE : JNI_FALSE;
+  return g_mag.publish(x, y, z, timestampNs) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -161,15 +163,16 @@ Java_com_miniros1_grabbure_NativeBridge_gpsTopic(JNIEnv* env, jclass) {
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_miniros1_grabbure_NativeBridge_publishNavSat(JNIEnv*, jclass, jdouble latitude, jdouble longitude,
                                                      jdouble altitude, jboolean hasAltitude,
-                                                     jdouble horizontalAccuracyM, jdouble verticalAccuracyM) {
+                                                     jdouble horizontalAccuracyM, jdouble verticalAccuracyM,
+                                                     jlong timestampNs) {
   if (grabbure::bagWriter().isOpen()) {
     return grabbure::bagWriter().writeNavSat(latitude, longitude, altitude, hasAltitude == JNI_TRUE,
-                                             horizontalAccuracyM, verticalAccuracyM)
+                                             horizontalAccuracyM, verticalAccuracyM, timestampNs)
                ? JNI_TRUE
                : JNI_FALSE;
   }
   return g_gps.publish(latitude, longitude, altitude, hasAltitude == JNI_TRUE, horizontalAccuracyM,
-                       verticalAccuracyM)
+                       verticalAccuracyM, timestampNs)
              ? JNI_TRUE
              : JNI_FALSE;
 }

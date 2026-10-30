@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -24,8 +25,9 @@ class GpsPublisher {
   std::vector<std::string> topics() const;
 
   /// WGS84 degrees and meters. A negative accuracy means that axis is unknown.
+  /// `bootNs` is `Location.getElapsedRealtimeNanos`.
   bool publish(double latitudeDeg, double longitudeDeg, double altitudeM, bool hasAltitude,
-               double horizontalAccuracyM, double verticalAccuracyM);
+               double horizontalAccuracyM, double verticalAccuracyM, int64_t bootNs);
 
  private:
   std::string frameId_;

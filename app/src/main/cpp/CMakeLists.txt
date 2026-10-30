@@ -27,4 +27,4 @@ add_library(grabbure SHARED
   discovery_bridge.cpp
   log_forwarder.cpp
   bag_writer.cpp)
-target_link_libraries(grabbure PRIVATE roscxx bag_storage log)
+target_link_libraries(grabbure PRIVATE roscxx bag_storage)
